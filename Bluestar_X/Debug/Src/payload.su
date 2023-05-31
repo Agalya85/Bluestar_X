@@ -1,0 +1,4 @@
+payload.c:382:8:getSystemConfig	80	static
+payload.c:485:6:updateInputVoltage	8	static
+payload.c:527:6:formatGPSSring	16	static
+payload.c:145:8:getSystemDataString	80	static

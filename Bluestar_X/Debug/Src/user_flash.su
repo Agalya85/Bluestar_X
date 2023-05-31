@@ -1,0 +1,11 @@
+user_flash.c:211:17:GetSector	0	static
+user_flash.c:82:6:FLASH_If_Init	8	static
+user_flash.c:97:10:FLASH_If_Erase	32	static
+user_flash.c:134:10:FLASH_If_Write	24	static
+user_flash.c:175:10:FLASH_If_GetWriteProtectionStatus	40	static
+user_flash.c:319:19:FLASH_If_WriteProtectionConfig	64	static
+user_flash.c:382:10:ConfigFLASHIfWrite	32	static
+user_flash.c:475:10:WriteDatatoFlash	8	static
+user_flash.c:500:10:FLASH_If_Erase_User	32	static
+user_flash.c:565:22:getNewFirmwareStorageLocation	0	static
+user_flash.c:630:10:flashWriteBootSection	16	static

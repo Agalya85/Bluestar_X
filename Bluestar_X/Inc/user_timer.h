@@ -1,0 +1,214 @@
+/*******************************************************************************
+* Title                 :   Timer Peripheral Interface
+* Filename              :   timer.h
+* Author                :   Hrishikesh Limaye
+* Origin Date           :   08/03/2022
+* Version               :   1.0.0
+* Compiler              :
+* Target                :   STM32F437 - Tor4Eth
+* Notes                 :   None
+*
+* Copyright (c) by KloudQ Technologies Limited.
+
+  This software is copyrighted by and is the sole property of KloudQ
+  Technologies Limited.
+  All rights, title, ownership, or other interests in the software remain the
+  property of  KloudQ Technologies Limited. This software may only be used in
+  accordance with the corresponding license agreement. Any unauthorized use,
+  duplication, transmission, distribution, or disclosure of this software is
+  expressly forbidden.
+
+  This Copyright notice may not be removed or modified without prior written
+  consent of KloudQ Technologies Limited.
+
+  KloudQ Technologies Limited reserves the right to modify this software
+  without notice.
+*
+*
+*******************************************************************************/
+/*************** FILE REVISION LOG *****************************************
+*
+*    Date    Version   Author         	  Description
+*  08/03/22   1.0.0    Hrishikesh Limaye   Initial Release.
+*
+*******************************************************************************/
+
+/** @file  user_timer.h
+ *  @brief Utilities for Timer peripheral
+ */
+
+#ifndef USER_TIMER_H_
+#define USER_TIMER_H_
+/******************************************************************************
+* Includes
+*******************************************************************************/
+/******************************************************************************
+* Module Preprocessor Constants
+*******************************************************************************/
+#include "tim.h"
+
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define ONE_MS 			(1)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define HUNDRED_MS 		(1)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define FIVEHUNDRED_MS  (500 * ONE_MS)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define ONE_SEC      	(1000 * ONE_MS)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define TWO_SEC      	(2 * ONE_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define THREE_SEC		(3 * ONE_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define FOUR_SEC 		(2 * TWO_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define FIVE_SEC	 	(5 * ONE_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define EIGHT_SEC		(2 * FOUR_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define TEN_SEC         (2 * FIVE_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define FIFTEEN_SEC		(3 * FIVE_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define TWENTY_SEC		(4 * FIVE_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define THIRTY_SEC		(3 * TEN_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+
+#define ONE_MIN			  (6 * TEN_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define ONE_MIN_THRTY_SEC (ONE_MIN + THIRTY_SEC)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define TWO_MIN			  (2 * ONE_MIN)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define THREE_MIN		  (3 * ONE_MIN)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define FOURs_MIN		  (4 * ONE_MIN)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define FIVE_MIN		  (5 * ONE_MIN)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define TEN_MIN			  (2 * FIVE_MIN)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define FIFTEEN_MIN		  (3 * FIVE_MIN)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define TWENTY_MIN		  (2 * TEN_MIN)
+/**
+ * \brief Defines unit time derived from 1ms interrupt  \a .
+   \param None.
+   \returns None \a .
+ */
+#define THIRTY_MIN		  (3 * TEN_MIN)
+
+/******************************************************************************
+* Module Preprocessor Macros
+*******************************************************************************/
+
+/******************************************************************************
+* Module Typedefs
+*******************************************************************************/
+
+/******************************************************************************
+* Module Variable Definitions
+*******************************************************************************/
+
+/******************************************************************************
+* Function Prototypes
+*******************************************************************************/
+#ifdef __cplusplus
+extern "C"{
+#endif
+
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
+
+#endif /* USER_TIMER_H_ */

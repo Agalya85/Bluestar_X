@@ -1,0 +1,10 @@
+user_rtc.c:542:6:HAL_RTCEx_WakeUpTimerEventCallback	0	static
+user_rtc.c:579:6:HAL_RTC_AlarmAEventCallback	0	static
+user_rtc.c:617:6:getRTCCalender	24	static
+user_rtc.c:668:6:backupRTCCalender	16	static
+user_rtc.c:716:6:readbackedupRTCCalender	16	static
+user_rtc.c:760:10:DecimalToBCD	0	static
+user_rtc.c:798:10:BCDToDecimal	0	static
+user_rtc.c:836:6:updateElapsedTime	16	static
+user_rtc.c:926:6:syncRTCGPS	16	static
+user_rtc.c:1016:6:getrtcStamp	16	static

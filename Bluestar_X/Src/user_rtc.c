@@ -1,0 +1,1028 @@
+///*******************************************************************************
+//* Title                 :   Device Internal RTC
+//* Filename              :   user_rtc.c
+//* Author                :   Hrishikesh Limaye
+//* Origin Date           :   08/03/2022
+//* Version               :   1.0.0
+//* Compiler              :
+//* Target                :   STM32F43x - Tor4Eth
+//* Notes                 :   None
+//*
+//* Copyright (c) by KloudQ Technologies Limited.
+//
+//  This software is copyrighted by and is the sole property of KloudQ
+//  Technologies Limited.
+//  All rights, title, ownership, or other interests in the software remain the
+//  property of  KloudQ Technologies Limited. This software may only be used in
+//  accordance with the corresponding license agreement. Any unauthorized use,
+//  duplication, transmission, distribution, or disclosure of this software is
+//  expressly forbidden.
+//
+//  This Copyright notice may not be removed or modified without prior written
+//  consent of KloudQ Technologies Limited.
+//
+//  KloudQ Technologies Limited reserves the right to modify this software
+//  without notice.
+//*
+//*
+//*******************************************************************************/
+//
+///*************** FILE REVISION LOG *****************************************
+//*
+//*    Date    Version   Author         	  Description
+//*  08/03/22   1.0.0    Hrishikesh Limaye   Initial Release.
+//*
+//*******************************************************************************/
+//
+///** @file  user_rtc.c
+// *  @brief Utilities for Accessing Internal RTC
+// */
+//
+///******************************************************************************
+//* Includes
+//*******************************************************************************/
+//#include "applicationdefines.h"
+//#include "string.h"
+//#include "stdlib.h"
+//#include "stdio.h"
+//#include "externs.h"
+//#include "user_rtc.h"
+//#include "gsmSim7600.h"
+//
+///******************************************************************************
+//* Module Preprocessor Constants
+//*******************************************************************************/
+///**
+// * Doxygen tag for documenting variables and constants
+// */
+//
+///******************************************************************************
+//* Module Preprocessor Macros
+//*******************************************************************************/
+//
+///******************************************************************************
+//* Module Typedefs
+//*******************************************************************************/
+//
+///******************************************************************************
+//* Module Variable Definitions
+//*******************************************************************************/
+//RTC_DateTypeDef SDate1;
+//RTC_TimeTypeDef STime1;
+//
+//char gau8Year[5] = {'0'};
+//char gau8Month[5] = {'0'};
+//char gau8Date[5] = {'0'};
+//char gau8Hour[5] = {'0'};
+//char gau8Minutes[5] = {'0'};
+//char gau8Seconds[5] = {'0'};
+//
+//strTimeElapsedAftersync strTimeUpdate = {0,0,0,0,0,0,0,0,0};
+//
+//volatile uint32_t gu32TimeSyncVariable = 0;
+//uint32_t gu32TimeSyncFlag = 0;
+//
+//extern strctGSM gsmInstance;
+//
+///******************************************************************************
+//* Function Prototypes
+//*******************************************************************************/
+//
+///******************************************************************************
+//* Function Definitions
+//*******************************************************************************/
+///******************************************************************************
+//* Function : getrtcStamp()
+//*//**
+//* \b Description:
+//*
+//* This function is used to Get Time and Date.
+//*
+//* PRE-CONDITION: Enable Internal RTC
+//*
+//* POST-CONDITION:
+//*
+//*
+//* @return 		None.
+//*
+//* \b Example Example:
+//* @code
+//*
+//* 	getrtcStamp();
+//*
+//* @endcode
+//*
+//* @see
+//*
+//* <br><b> - HISTORY OF CHANGES - </b>
+//*
+//* <table align="left" style="width:800px">
+//* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+//* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+//*
+//* </table><br><br>
+//* <hr>
+//*
+//*******************************************************************************/
+//void getrtcStamp(void)
+//{
+//	HAL_RTC_GetTime(&hrtc,&STime1,RTC_FORMAT_BCD);
+//	HAL_RTC_GetDate(&hrtc,&SDate1,RTC_FORMAT_BCD);
+//
+//	itoa(BCDToDecimal(SDate1.Year),gau8Year,PAYLOAD_DATA_STRING_RADIX);
+//	itoa(BCDToDecimal(SDate1.Month),gau8Month,PAYLOAD_DATA_STRING_RADIX);
+//	itoa(BCDToDecimal(SDate1.Date),gau8Date,PAYLOAD_DATA_STRING_RADIX);
+//
+//	itoa(BCDToDecimal(STime1.Hours),gau8Hour,PAYLOAD_DATA_STRING_RADIX);
+//	itoa(BCDToDecimal(STime1.Minutes),gau8Minutes,PAYLOAD_DATA_STRING_RADIX);
+//	itoa(BCDToDecimal(STime1.Seconds),gau8Seconds,PAYLOAD_DATA_STRING_RADIX);
+//}
+//
+//
+///******************************************************************************
+//* Function : DecimalToBCD (uint32_t Decimal)
+//*//**
+//* \b Description:
+//*
+//* This function is used Convert Decimal to BCD.
+//*
+//* PRE-CONDITION:
+//*
+//* POST-CONDITION:
+//*
+//*
+//* @return 		uint32_t bcdValue.
+//*
+//* \b Example Example:
+//* @code
+//*
+//* 	DecimalToBCD(23);
+//*
+//* @endcode
+//*
+//* @see
+//*
+//* <br><b> - HISTORY OF CHANGES - </b>
+//*
+//* <table align="left" style="width:800px">
+//* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+//* <tr><td> 01/06/2019 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+//*
+//* </table><br><br>
+//* <hr>
+//*
+//*******************************************************************************/
+//uint32_t DecimalToBCD (uint32_t Decimal)
+//{
+//   return (((Decimal/10) << 4) | (Decimal % 10));
+//}
+//
+///******************************************************************************
+//* Function : BCDToDecimal(uint32_t BCD)
+//*//**
+//* \b Description:
+//*
+//* This function is used Convert Convert BCD to Decimal.
+//*
+//* PRE-CONDITION:
+//*
+//* POST-CONDITION:
+//*
+//*
+//* @return 		uint32_t decimalValue.
+//*
+//* \b Example Example:
+//* @code
+//*
+//* 	uint32_t decimalValue = BCDToDecimal(23);
+//*
+//* @endcode
+//*
+//* @see
+//*
+//* <br><b> - HISTORY OF CHANGES - </b>
+//*
+//* <table align="left" style="width:800px">
+//* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+//* <tr><td> 01/06/2019 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+//*
+//* </table><br><br>
+//* <hr>
+//*
+//*******************************************************************************/
+//uint32_t BCDToDecimal(uint32_t BCD)
+//{
+//   return (((BCD >> 4) * 10) + (BCD & 0xF));
+//}
+//
+///******************************************************************************
+//* Function : updateElapsedTime(uint32_t millisecond)
+//*//**
+//* \b Description:
+//*
+//* This function is used to Calculate elapsed time after rtc sync (network).
+//*
+//* PRE-CONDITION: update flag in respective hal.c file
+//*
+//* POST-CONDITION:
+//*
+//*
+//* @return 		None.
+//*
+//* \b Example Example:
+//* @code
+//*
+//* 	updateElapsedTime(566666);
+//*
+//* @endcode
+//*
+//* @see
+//*
+//* <br><b> - HISTORY OF CHANGES - </b>
+//*
+//* <table align="left" style="width:800px">
+//* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+//* <tr><td> 01/06/2019 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+//*
+//* </table><br><br>
+//* <hr>
+//*
+//*******************************************************************************/
+//void updateElapsedTime(uint32_t millisecond)
+//{
+//	if(gu32TimeSyncFlag != 1)
+//		return;
+//
+//	strTimeUpdate.u32TimeHH = (millisecond / (1000 * 60 * 60)) % 24;
+//	strTimeUpdate.u32TimeMin = (millisecond / (1000 * 60)) % 60;
+//	strTimeUpdate.u32TimeSec = (millisecond / 1000) % 60;
+//	strTimeUpdate.u32TimeMilliSec = (millisecond % 1000);
+//
+//	strTimeUpdate.u32ActTimeHH = strTimeUpdate.u32RefTimeHH + strTimeUpdate.u32TimeHH;
+//	strTimeUpdate.u32ActTimeMin = strTimeUpdate.u32RefTimeMin + strTimeUpdate.u32TimeMin;
+//	strTimeUpdate.u32ActTimeSec = strTimeUpdate.u32RefTimeSec + strTimeUpdate.u32TimeSec;
+//	strTimeUpdate.u32ActTimeMilliSec = strTimeUpdate.u32RefTimeMilliSec + strTimeUpdate.u32TimeMilliSec;
+//
+//	if(strTimeUpdate.u32ActTimeSec > 59)
+//	{
+//		strTimeUpdate.u32ActTimeMin++;
+//		strTimeUpdate.u32ActTimeSec = strTimeUpdate.u32ActTimeSec - 60;
+//		strTimeUpdate.u32TimeSec = 0;
+//	}
+//	if(strTimeUpdate.u32ActTimeMin > 59)
+//	{
+//		strTimeUpdate.u32ActTimeHH++;
+//		strTimeUpdate.u32ActTimeMin = strTimeUpdate.u32ActTimeMin - 60;
+//		strTimeUpdate.u32TimeMin = 0;
+//	}
+//	if(strTimeUpdate.u32ActTimeHH > 23)
+//	{
+//		strTimeUpdate.u32ActTimeHH = strTimeUpdate.u32ActTimeHH - 24;
+//		/* Added */
+//		strTimeUpdate.u32TimeHH = 0;
+//		//strTimeUpdate.u32TimeMin = 0;
+//	}
+//
+//	HAL_RTC_GetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+//	HAL_RTC_GetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+//
+//	if(BCDToDecimal(STime1.Hours) != strTimeUpdate.u32ActTimeHH)
+//		STime1.Hours = DecimalToBCD(strTimeUpdate.u32ActTimeHH);
+//
+//	if(BCDToDecimal(STime1.Minutes) != strTimeUpdate.u32ActTimeMin)
+//		STime1.Minutes = DecimalToBCD(strTimeUpdate.u32ActTimeMin);
+//
+//	if(BCDToDecimal(STime1.Seconds) != strTimeUpdate.u32ActTimeSec)
+//		STime1.Seconds = DecimalToBCD(strTimeUpdate.u32ActTimeSec);
+//
+//	HAL_RTC_SetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+//	HAL_RTC_SetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+//}
+//
+///******************************************************************************
+//* Function : syncRTCGPS()
+//*//**
+//* \b Description:
+//*
+//* This function is used to Sync rtc with GPS rtc .
+//*
+//* PRE-CONDITION:
+//*
+//* POST-CONDITION:
+//*
+//*
+//* @return 		None.
+//*
+//* \b Example Example:
+//* @code
+//*
+//* 	syncRTCGPS();
+//*
+//* @endcode
+//*
+//* @see
+//*
+//* <br><b> - HISTORY OF CHANGES - </b>
+//*
+//* <table align="left" style="width:800px">
+//* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+//* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+//*
+//* </table><br><br>
+//* <hr>
+//*
+//*******************************************************************************/
+//extern uint32_t u32GPSRefTimeHH;
+//extern uint32_t u32GPSRefTimeMM;
+//extern uint32_t u32GPSRefTimeSS;
+//extern uint32_t u32GPSRefDateDD;
+//extern uint32_t u32GPSRefDateMM;
+//extern uint32_t u32GPSRefDateYY;
+//void syncRTCGPS(void)
+//{
+//	u32GPSRefTimeHH = ((gsmInstance.agpsLocationData[36] - '0') * 10 )
+//											+ ((gsmInstance.agpsLocationData[37] - '0'));
+//
+//	u32GPSRefTimeMM = ((gsmInstance.agpsLocationData[38] - '0') * 10 )
+//							+ ((gsmInstance.agpsLocationData[39] - '0'));
+//
+//	u32GPSRefTimeSS = ((gsmInstance.agpsLocationData[40] - '0') * 10 )
+//							+ ((gsmInstance.agpsLocationData[41] - '0'));
+//
+//	u32GPSRefDateDD = ((gsmInstance.agpsLocationData[29] - '0') * 10 )
+//							+ ((gsmInstance.agpsLocationData[30] - '0'));
+//
+//	u32GPSRefDateMM = ((gsmInstance.agpsLocationData[31] - '0') * 10 )
+//							+ ((gsmInstance.agpsLocationData[32] - '0'));
+//
+//	u32GPSRefDateYY = ((gsmInstance.agpsLocationData[33] - '0') * 10 )
+//							+ ((gsmInstance.agpsLocationData[34] - '0'));
+//
+//	/* UTC to Local Time Conversion */
+//	u32GPSRefTimeHH += 5;
+//	u32GPSRefTimeMM += 30;
+//
+//	if(u32GPSRefTimeSS > 59)
+//	{
+//		u32GPSRefTimeMM++;
+//		u32GPSRefTimeSS = u32GPSRefTimeSS - 60;
+//	}
+//	if(u32GPSRefTimeMM > 59)
+//	{
+//		u32GPSRefTimeHH++;
+//		u32GPSRefTimeMM = u32GPSRefTimeMM - 60;
+//
+//	}
+//	if(u32GPSRefTimeHH > 23)
+//	{
+//		u32GPSRefTimeHH = u32GPSRefTimeHH - 24;
+//	}
+//
+//	/*Check Null data */
+//	HAL_RTC_GetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+//	HAL_RTC_GetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+//
+//	if(BCDToDecimal(STime1.Hours) != u32GPSRefTimeHH)
+//		STime1.Hours = DecimalToBCD(u32GPSRefTimeHH);
+//
+//	if(BCDToDecimal(STime1.Minutes) != u32GPSRefTimeMM)
+//		STime1.Minutes = DecimalToBCD(u32GPSRefTimeMM);
+//
+//	if(BCDToDecimal(STime1.Seconds) != u32GPSRefTimeSS)
+//		STime1.Seconds = DecimalToBCD(u32GPSRefTimeSS);
+//
+//	HAL_RTC_SetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+//	HAL_RTC_SetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+//}
+//
+////******************************* End of File *******************************************************************
+
+
+/*******************************************************************************
+* Title                 :   Device Internal RTC
+* Filename              :   user_rtc.c
+* Author                :   Hrishikesh Limaye
+* Origin Date           :   04/21/2022
+* Version               :   1.0.0
+* Compiler              :
+* Target                :   STM32F43x - Tor4Eth
+* Notes                 :   None
+*
+* Copyright (c) by KloudQ Technologies Limited.
+
+  This software is copyrighted by and is the sole property of KloudQ
+  Technologies Limited.
+  All rights, title, ownership, or other interests in the software remain the
+  property of  KloudQ Technologies Limited. This software may only be used in
+  accordance with the corresponding license agreement. Any unauthorized use,
+  duplication, transmission, distribution, or disclosure of this software is
+  expressly forbidden.
+
+  This Copyright notice may not be removed or modified without prior written
+  consent of KloudQ Technologies Limited.
+
+  KloudQ Technologies Limited reserves the right to modify this software
+  without notice.
+*
+*
+*******************************************************************************/
+
+/*************** FILE REVISION LOG *****************************************
+*
+*    Date    Version   Author         	  Description
+*  21/4/22   1.0.0    Hrishikesh Limaye   Initial Release.
+*
+*******************************************************************************/
+
+/** @file  user_rtc.c
+ *  @brief Utilities for Accessing Internal RTC
+ */
+
+/******************************************************************************
+* Includes
+*******************************************************************************/
+#include "main.h"
+#include "i2c.h"
+#include "iwdg.h"
+#include "lwip.h"
+#include "rtc.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+#include "externs.h"
+#include "user_rtc.h"
+#include "gsmSim7600.h"
+#include "user_timer.h"
+
+/******************************************************************************
+* Module Preprocessor Constants
+*******************************************************************************/
+/**
+ * Doxygen tag for documenting variables and constants
+ */
+
+/******************************************************************************
+* Module Preprocessor Macros
+*******************************************************************************/
+
+/******************************************************************************
+* Module Typedefs
+*******************************************************************************/
+
+/******************************************************************************
+* Module Variable Definitions
+*******************************************************************************/
+RTC_DateTypeDef sTimeStampDateget_backup;
+RTC_TimeTypeDef sTimeStampget_backup;
+
+RTC_DateTypeDef sdatestructureget;
+RTC_TimeTypeDef stimestructureget;
+
+/* Buffers used for displaying Time and Date */
+uint8_t aShowTime[50] = {0}, aShowTimeStamp[50] = {0};
+uint8_t aShowDate[50] = {0}, aShowDateStamp[50] = {0};
+
+char gau8Year[5] = {'0'};
+char gau8Month[5] = {'0'};
+char gau8Date[5] = {'0'};
+char gau8Hour[5] = {'0'};
+char gau8Minutes[5] = {'0'};
+char gau8Seconds[5] = {'0'};
+
+strTimeElapsedAftersync strTimeUpdate = {0,0,0,0,0,0,0,0,0};
+
+volatile uint32_t gu32TimeSyncVariable = 0;
+uint32_t gu32TimeSyncFlag = 0;
+
+extern strctGSM gsmInstance;
+
+/******************************************************************************
+* Function Prototypes
+*******************************************************************************/
+
+/******************************************************************************
+* Function Definitions
+*******************************************************************************/
+/*
+ * Tested for 1 sec interrupt on 20_4_22 - ok
+ * */
+/******************************************************************************
+* Function : HAL_RTCEx_WakeUpTimerEventCallback()
+*//**
+* \b Description:
+*
+* Callback function for programmed interrupt.
+*
+* PRE-CONDITION: Enable Internal RTC Wakeup Interrupt
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 21/04/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created and Tested </td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+
+void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc)
+{
+	//HAL_GPIO_TogglePin(LED_1_GPIO_Port,LED_1_Pin);
+}
+
+/******************************************************************************
+* Function : HAL_RTC_AlarmAEventCallback()
+*//**
+* \b Description:
+*
+* Callback function for programmed alarms interrupt.
+*
+* PRE-CONDITION: Enable Internal RTC Alarm 'A' and/or 'B' Interrupt
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 21/04/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc)
+{
+
+}
+
+/******************************************************************************
+* Function : getRTCCalender()
+*//**
+* \b Description:
+*
+* This function for used to get latest timestamp .
+*
+* PRE-CONDITION: Enable Internal RTC
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+*	getRTCCalender();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 21/04/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created and tseted</td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void getRTCCalender(void)
+{
+
+  /* Get the RTC current Time */
+  HAL_RTC_GetTime(&hrtc, &stimestructureget, RTC_FORMAT_BIN);
+  /* Get the RTC current Date */
+  HAL_RTC_GetDate(&hrtc, &sdatestructureget, RTC_FORMAT_BIN);
+
+  /* Display time Format : hh:mm:ss */
+  sprintf((char*)aShowTimeStamp,"%.2d:%.2d:%.2d", stimestructureget.Hours, stimestructureget.Minutes, stimestructureget.Seconds);
+  /* Display date Format : mm-dd-yy */
+  sprintf((char*)aShowDateStamp,"%.2d/%.2d/%.2d",sdatestructureget.Date, sdatestructureget.Month, 2000 + sdatestructureget.Year);
+}
+
+/******************************************************************************
+* Function : backupRTCCalender()
+*//**
+* \b Description:
+*
+* This function for used to write RTC calender to backup register bank .
+*
+* PRE-CONDITION: Enable Internal RTC
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+*	backupRTCCalender();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 21/04/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created and tseted</td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+/**
+ *
+ * Tested ok - 21_4_2022
+ */
+void backupRTCCalender(void)
+{
+	// Write Back Up Register 1 Data
+   HAL_PWR_EnableBkUpAccess();
+   // Writes a data in a RTC Backup data Register 1
+   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, stimestructureget.Hours);
+   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR2, stimestructureget.Minutes);
+   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR3, stimestructureget.Seconds);
+
+   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR4, sdatestructureget.Date);
+   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR5, sdatestructureget.Month);
+   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR6, sdatestructureget.Year);
+   HAL_PWR_DisableBkUpAccess();
+}
+
+/******************************************************************************
+* Function : readbackedupRTCCalender()
+*//**
+* \b Description:
+*
+* This function for used to read RTC calender from backup register bank .
+*
+* PRE-CONDITION:
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+*	backupRTCCalender();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 21/04/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created and tseted</td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void readbackedupRTCCalender(void)
+{
+   /* Read Data */
+   sTimeStampget_backup.Hours = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1);
+   sTimeStampget_backup.Minutes = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR2);
+   sTimeStampget_backup.Seconds = HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR3);
+   sTimeStampDateget_backup.Date =  HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR4);
+   sTimeStampDateget_backup.Month =  HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR5);
+   sTimeStampDateget_backup.Year =  HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR6);
+}
+
+/******************************************************************************
+* Function : DecimalToBCD (uint32_t Decimal)
+*//**
+* \b Description:
+*
+* This function is used Convert Decimal to BCD.
+*
+* PRE-CONDITION:
+*
+* POST-CONDITION:
+*
+*
+* @return 		uint32_t bcdValue.
+*
+* \b Example Example:
+* @code
+*
+* 	DecimalToBCD(23);
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 01/06/2019 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+uint32_t DecimalToBCD (uint32_t Decimal)
+{
+   return (((Decimal/10) << 4) | (Decimal % 10));
+}
+
+/******************************************************************************
+* Function : BCDToDecimal(uint32_t BCD)
+*//**
+* \b Description:
+*
+* This function is used Convert Convert BCD to Decimal.
+*
+* PRE-CONDITION:
+*
+* POST-CONDITION:
+*
+*
+* @return 		uint32_t decimalValue.
+*
+* \b Example Example:
+* @code
+*
+* 	uint32_t decimalValue = BCDToDecimal(23);
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 01/06/2019 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+uint32_t BCDToDecimal(uint32_t BCD)
+{
+   return (((BCD >> 4) * 10) + (BCD & 0xF));
+}
+
+/******************************************************************************
+* Function : updateElapsedTime(uint32_t millisecond)
+*//**
+* \b Description:
+*
+* This function is used to Calculate elapsed time after rtc sync (network).
+*
+* PRE-CONDITION: update flag in respective hal.c file
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+* 	updateElapsedTime(566666);
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 01/06/2019 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void updateElapsedTime(uint32_t millisecond)
+{
+	if(gu32TimeSyncFlag != 1)
+		return;
+
+	strTimeUpdate.u32TimeHH = (millisecond / (1000 * 60 * 60)) % 24;
+	strTimeUpdate.u32TimeMin = (millisecond / (1000 * 60)) % 60;
+	strTimeUpdate.u32TimeSec = (millisecond / 1000) % 60;
+	strTimeUpdate.u32TimeMilliSec = (millisecond % 1000);
+
+	strTimeUpdate.u32ActTimeHH = strTimeUpdate.u32RefTimeHH + strTimeUpdate.u32TimeHH;
+	strTimeUpdate.u32ActTimeMin = strTimeUpdate.u32RefTimeMin + strTimeUpdate.u32TimeMin;
+	strTimeUpdate.u32ActTimeSec = strTimeUpdate.u32RefTimeSec + strTimeUpdate.u32TimeSec;
+	strTimeUpdate.u32ActTimeMilliSec = strTimeUpdate.u32RefTimeMilliSec + strTimeUpdate.u32TimeMilliSec;
+
+	if(strTimeUpdate.u32ActTimeSec > 59)
+	{
+		strTimeUpdate.u32ActTimeMin++;
+		strTimeUpdate.u32ActTimeSec = strTimeUpdate.u32ActTimeSec - 60;
+		strTimeUpdate.u32TimeSec = 0;
+	}
+	if(strTimeUpdate.u32ActTimeMin > 59)
+	{
+		strTimeUpdate.u32ActTimeHH++;
+		strTimeUpdate.u32ActTimeMin = strTimeUpdate.u32ActTimeMin - 60;
+		strTimeUpdate.u32TimeMin = 0;
+	}
+	if(strTimeUpdate.u32ActTimeHH > 23)
+	{
+		strTimeUpdate.u32ActTimeHH = strTimeUpdate.u32ActTimeHH - 24;
+		/* Added */
+		strTimeUpdate.u32TimeHH = 0;
+		//strTimeUpdate.u32TimeMin = 0;
+	}
+
+	HAL_RTC_GetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+	HAL_RTC_GetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+
+	if(BCDToDecimal(STime1.Hours) != strTimeUpdate.u32ActTimeHH)
+		STime1.Hours = DecimalToBCD(strTimeUpdate.u32ActTimeHH);
+
+	if(BCDToDecimal(STime1.Minutes) != strTimeUpdate.u32ActTimeMin)
+		STime1.Minutes = DecimalToBCD(strTimeUpdate.u32ActTimeMin);
+
+	if(BCDToDecimal(STime1.Seconds) != strTimeUpdate.u32ActTimeSec)
+		STime1.Seconds = DecimalToBCD(strTimeUpdate.u32ActTimeSec);
+
+	HAL_RTC_SetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+	HAL_RTC_SetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+}
+
+/******************************************************************************
+* Function : syncRTCGPS()
+*//**
+* \b Description:
+*
+* This function is used to Sync rtc with GPS rtc .
+*
+* PRE-CONDITION:
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+* 	syncRTCGPS();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+extern uint32_t u32GPSRefTimeHH;
+extern uint32_t u32GPSRefTimeMM;
+extern uint32_t u32GPSRefTimeSS;
+extern uint32_t u32GPSRefDateDD;
+extern uint32_t u32GPSRefDateMM;
+extern uint32_t u32GPSRefDateYY;
+void syncRTCGPS(void)
+{
+	u32GPSRefTimeHH = ((gsmInstance.agpsLocationData[36] - '0') * 10 )
+											+ ((gsmInstance.agpsLocationData[37] - '0'));
+
+	u32GPSRefTimeMM = ((gsmInstance.agpsLocationData[38] - '0') * 10 )
+							+ ((gsmInstance.agpsLocationData[39] - '0'));
+
+	u32GPSRefTimeSS = ((gsmInstance.agpsLocationData[40] - '0') * 10 )
+							+ ((gsmInstance.agpsLocationData[41] - '0'));
+
+	u32GPSRefDateDD = ((gsmInstance.agpsLocationData[29] - '0') * 10 )
+							+ ((gsmInstance.agpsLocationData[30] - '0'));
+
+	u32GPSRefDateMM = ((gsmInstance.agpsLocationData[31] - '0') * 10 )
+							+ ((gsmInstance.agpsLocationData[32] - '0'));
+
+	u32GPSRefDateYY = ((gsmInstance.agpsLocationData[33] - '0') * 10 )
+							+ ((gsmInstance.agpsLocationData[34] - '0'));
+
+	/* UTC to Local Time Conversion */
+	u32GPSRefTimeHH += 5;
+	u32GPSRefTimeMM += 30;
+
+	if(u32GPSRefTimeSS > 59)
+	{
+		u32GPSRefTimeMM++;
+		u32GPSRefTimeSS = u32GPSRefTimeSS - 60;
+	}
+	if(u32GPSRefTimeMM > 59)
+	{
+		u32GPSRefTimeHH++;
+		u32GPSRefTimeMM = u32GPSRefTimeMM - 60;
+
+	}
+	if(u32GPSRefTimeHH > 23)
+	{
+		u32GPSRefTimeHH = u32GPSRefTimeHH - 24;
+	}
+
+	/*Check Null data */
+	HAL_RTC_GetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+	HAL_RTC_GetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+
+	if(BCDToDecimal(STime1.Hours) != u32GPSRefTimeHH)
+		STime1.Hours = DecimalToBCD(u32GPSRefTimeHH);
+
+	if(BCDToDecimal(STime1.Minutes) != u32GPSRefTimeMM)
+		STime1.Minutes = DecimalToBCD(u32GPSRefTimeMM);
+
+	if(BCDToDecimal(STime1.Seconds) != u32GPSRefTimeSS)
+		STime1.Seconds = DecimalToBCD(u32GPSRefTimeSS);
+
+	HAL_RTC_SetTime(&hrtc, &STime1, RTC_FORMAT_BCD);
+	HAL_RTC_SetDate(&hrtc, &SDate1, RTC_FORMAT_BCD);
+}
+
+/******************************************************************************
+* Function : getrtcStamp()
+*//**
+* \b Description:
+*
+* This function is used to Get Time and Date.
+*
+* PRE-CONDITION: Enable Internal RTC
+*
+* POST-CONDITION:
+*
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+* 	getrtcStamp();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+*
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void getrtcStamp(void)
+{
+	HAL_RTC_GetTime(&hrtc,&STime1,RTC_FORMAT_BCD);
+	HAL_RTC_GetDate(&hrtc,&SDate1,RTC_FORMAT_BCD);
+
+	itoa(BCDToDecimal(SDate1.Year),gau8Year,PAYLOAD_DATA_STRING_RADIX);
+	itoa(BCDToDecimal(SDate1.Month),gau8Month,PAYLOAD_DATA_STRING_RADIX);
+	itoa(BCDToDecimal(SDate1.Date),gau8Date,PAYLOAD_DATA_STRING_RADIX);
+
+	itoa(BCDToDecimal(STime1.Hours),gau8Hour,PAYLOAD_DATA_STRING_RADIX);
+	itoa(BCDToDecimal(STime1.Minutes),gau8Minutes,PAYLOAD_DATA_STRING_RADIX);
+	itoa(BCDToDecimal(STime1.Seconds),gau8Seconds,PAYLOAD_DATA_STRING_RADIX);
+}

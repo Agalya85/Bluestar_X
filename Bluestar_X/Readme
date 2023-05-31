@@ -1,0 +1,22 @@
+FOTA
+readfile
+iteration done more than 212992 times
+
+
+2)uint32_t updateHTTPReadLength(uint32_t ConfigFileSizeBytes)
+		else
+		{
+//			itoa(u32ConfigFileChunkCounter * 2000,buffer,PAYLOAD_DATA_STRING_RADIX);
+			itoa(u32ConfigFileChunkCounter * FOTAFILECHUNKSIZEBYTES,buffer,PAYLOAD_DATA_STRING_RADIX);
+			
+3)
+char *ptr = strstr((const char *)&gsmInstance.as8GSM_Response_Buff,"+HTTPREAD:");
+											char *ptr2 = strstr(ptr,"\n");
+											memset(gau8ConfigData,0x00,sizeof(gau8ConfigData));
+											memcpy(gau8ConfigData,(ptr2+1),gsmInstance.gu32RemoteConfigSizeinBytes);
+											
+4)FOTA WORKING
+
+.bin file size-125872	
+iterations 122
+		

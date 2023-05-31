@@ -1,0 +1,3 @@
+user_adc.c:216:6:calculateInputVoltage	16	static
+user_adc.c:124:6:operateadc	8	static
+user_adc.c:237:6:HAL_ADC_ConvCpltCallback	0	static

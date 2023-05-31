@@ -1,0 +1,3 @@
+serial_communication.c:120:6:GSM_CharReception_Callback	4	static
+serial_communication.c:182:6:MODBUS_CharReception_Callback	0	static
+serial_communication.c:242:6:parseModbusResponse	0	static

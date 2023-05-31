@@ -1,0 +1,6 @@
+queue.c:109:6:initQueue	0	static
+queue.c:147:6:enqueue	16	static
+queue.c:204:6:dequeue	8	static
+queue.c:252:6:displayQueue	0	static
+queue.c:304:10:isQueueEmpty	0	static
+queue.c:345:10:isQueueFull	0	static

@@ -1,0 +1,985 @@
+/*
+ * remote_config.c
+ *
+ *  Created on: Jul 12, 2021
+ *      Author: admin
+ */
+
+#include "externs.h"
+#include "remote_configuration.h"
+#include "string.h"
+#include <regex.h>
+#include <stdio.h>
+#include<stdlib.h>
+#include "re.h"
+#include "ip_addr.h"
+
+
+#define IP_IS_TYPE_V4(ipaddr)   (IP_GET_TYPE(&ipaddr) == IPADDR_TYPE_V4 )
+
+#define CONFIG_MB485_MAXPARAMS (75)
+#define CONFIG_MBTCP_MAXPARAMS (CONFIG_MB485_MAXPARAMS)
+#define CONFIG_NW_PARAM	(11)
+#define CONFIG_MB485_PARAM	(11)
+
+
+char gau8RemoteDeviceID[40]={'0'};
+char gau8RemoteDeviceType[2] = "";
+uint32_t gu32ConfigLen = 0;
+uint32_t gu32ParseConfigAvailable = 0;
+
+uint32_t gu32ConfigOperationStatus = FALSE;
+uint32_t gu32ExtractParamCounter = 0;
+
+/* Network Configuration Update Variables */
+char gau8ConfigNewtorkIsEnabled[2] = "";
+char gau8ConfigNewtorkServerURL[150] = "";
+char gau8ConfigNewtorkConfigURL[150] = "";
+char gau8ConfigNewtorkAPN[50] = "";
+char gau8ConfigNewtorkUpFreqBatt[10] = "";
+char gau8ConfigNewtorkUpFreqSupply[10] = "";
+char gau8ConfigNewtorkType[2] = "";
+char gau8ConfigNewtorkGPSEnable[2] = "";
+char gau8ConfigNewtorkSendData[2] = "";
+char gau8ConfigNewtorkSendDataDisableTime[10] = "";
+
+/* Modbus 485 Configuration Update Variables */
+char gau8ConfigModbus485IsEnabled[2] = "";
+char gau8ConfigModbus485Termination[2] = "";
+char gau8ConfigModbus485DataPoints[3] = "";
+char gau8ConfigModbus485UARTBR[8] = "";
+char gau8ConfigModbus485UARTStartBit[2] = "";
+char gau8ConfigModbus485UARTStopBit[2] = "";
+char gau8ConfigModbus485UARTParity[2] = "";
+char gau8ConfigModbus485PollingTime[7] = "";
+char gau8ConfigModbus485ResponseTime[7] = "";
+uint32_t gau32ConfigModbus485Address[CONFIG_MB485_MAXPARAMS] = {'0'};
+uint32_t gau32ConfigModbus485DFunctionCode[CONFIG_MB485_MAXPARAMS] = {'0'};
+uint32_t gau32ConfigModbus485NoPoints[CONFIG_MB485_MAXPARAMS] = {'0'};
+
+/* Modbus TCP Configuration Update Variables */
+char gau8ConfigModbusTCPIsEnabled[2] = "";
+char gau8ConfigModbusTCPDataPoints[3] = "";
+char gau8ConfigModbusTCPIPDEVICE[16] = "";
+char gau8ConfigModbusTCPIPSERVER[16] = "";
+char gau8ConfigModbusTCPIPSUBNET[16] = "";
+char gau8ConfigModbusTCPIPGATEWAY[16] = "";
+char gau8ConfigModbusTCPPORT[6] = "";
+char gau8ConfigModbusTCPPollingTime[7] = "";
+char gau8ConfigModbusTCPResponseTime[7] = "";
+uint32_t gau32ConfigModbusTCPAddress[CONFIG_MBTCP_MAXPARAMS] = {'0'};
+uint32_t gau32ConfigModbusTCPDFunctionCode[CONFIG_MBTCP_MAXPARAMS] = {'0'};
+uint32_t gau32ConfigModbusTCPNoPoints[CONFIG_MBTCP_MAXPARAMS] = {'0'};
+
+
+uint32_t ga8ConfigNWLength = 0;
+uint32_t ga8ConfigMB485Length = 0;
+uint32_t ga8ConfigMBTCPLength = 0;
+
+uint32_t gu32ConfigNetworkErrorDatabase = 0;
+uint32_t gu32ConfigModbus485ErrorDatabase = 0;
+uint32_t gu32ConfigModbusTCPErrorDatabase = 0;
+
+/* This will be configured based on feature / peripheral available of hardware during release
+ * 1 -  Feature Available
+ * 0 -  Feature Not Available
+ * 1.  ADC
+ * 2.  DI
+ * 3.  DO
+ * 4.  RPM IN
+ * 5.  Network
+ * 6.  Modbus-485
+ * 7.  Modbus-TCP
+ * 8.  Data Mgmt
+ * 9.  CAN_1
+ * 10. CAN_2
+ * 11. Debug
+ * 12. MQTT
+ * */
+uint32_t gau32RemoteConfigSupport[12]={ FALSE,FALSE,FALSE,FALSE,
+										FALSE ,TRUE ,TRUE ,TRUE ,
+									    FALSE,FALSE,FALSE,FALSE};
+
+enmRemoteConfig enmDeviceConfigState = enmCONFIG_DEVTYPE;
+enmMyDevice enmMyDeviceType = enmDEVICETYPE_TOR4G;
+
+/*Config Variables - Global*/
+char * sof = "";
+char * eof = "";
+
+/*Config Variables - Network */
+char * nwsof = "";
+char * nweof = "";
+char * nwconfig = "";
+
+/*Config Variables - Modbus485 */
+char * mb485sof = "";
+char * mb485eof = "";
+char * mb485config = "";
+
+/*Config Variables - ModbusTCP */
+char * mbTCPsof = "";
+char * mbTCPeof = "";
+char * mbTCPconfig = "";
+
+size_t nwmlen = 0;
+size_t mb485mlen = 0;
+size_t mbtcpmlen = 0;//mbTCPeof - mbTCPsof ;
+
+regex_t regex;
+
+/*
+ * regcomp(&regex,
+            "^([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+             "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+             "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+             "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))$", 0);*/
+
+
+static void verifyNetworkConfigData(void);
+static void verifyModbus485ConfigData(void);
+static void verifyModbusTCPConfigData(void);
+/*
+ * regcomp(&regex,
+        "^([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+         "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+         "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+         "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))$", REG_EXTENDED);
+ * */
+
+void verifyRemoteConfiguration(void)
+{
+	if(gu32NewConfigAvailable == TRUE)
+	{
+		sof = strstr(gau8ConfigData,"(,");
+		eof = strstr(gau8ConfigData,",)");
+		/* Network */
+		nwsof = strstr(gau8ConfigData,"NS,");
+		nweof = strstr(gau8ConfigData,",NE");
+		/* Modbus 485*/
+		mb485sof = strstr(gau8ConfigData,"MS,");
+		mb485eof = strstr(gau8ConfigData,",ME");
+		/* Modbus TCP*/
+		mbTCPsof = strstr(gau8ConfigData,"ms,");
+		mbTCPeof = strstr(gau8ConfigData,",me");
+		if(sof != NULL)
+		{
+			/* Start of frame found */
+			if(eof != NULL)
+			{
+				/* End of Frame Found . Parse the frame for config Data */
+				gu32ConfigLen = eof - sof ;	// Total Config Bytes
+				memcpy(gau8RemoteDeviceID, sof+4, strlen(strtok(sof+4,",")));
+				gu32ParseConfigAvailable = TRUE;
+			}
+
+		}
+
+	}
+	gu32NewConfigAvailable = FALSE;
+
+}
+
+void parseRemoteconfig(void)
+{
+	if(gu32ParseConfigAvailable == TRUE)
+	{
+		/*Fresh Config Available */
+		if(strcmp(dinfo,gau8RemoteDeviceID) == 0)
+		{
+			/* Device ID is matching . Update system as per config */
+			/* TODO : State Machine to extract received configuration
+			 * 1.  ADC
+			 * 2.  DI
+			 * 3.  DO
+			 * 4.  RPM IN
+			 * 5.  Network
+			 * 6.  Modbus-485
+			 * 7.  Modbus-TCP
+			 * 8.  Data Mgmt
+			 * 9.  CAN_1
+			 * 10. CAN_2
+			 * 11. Debug
+			 * 12. MQTT */
+			switch(enmDeviceConfigState)
+			{
+				case enmCONFIG_DEVTYPE:
+					memcpy(gau8RemoteDeviceType, sof+2, strlen(strtok(sof+2,",")));
+					if(atoi(gau8RemoteDeviceType) == enmMyDeviceType)
+					{
+						/* Device Type Verified */
+						enmDeviceConfigState++;
+					}
+					else
+					{
+						/* Device Type Not valid . Do not parse the config */
+						gu32ParseConfigAvailable = FALSE;
+					}
+
+					break;
+
+				case enmCONFIG_ADC:
+					if(gau32RemoteConfigSupport[enmCONFIG_ADC] == TRUE)
+					{
+						/* Parse ADC configuration */
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_DI:
+					if(gau32RemoteConfigSupport[enmCONFIG_DI] == TRUE)
+					{
+						/* Parse DI configuration */
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_DO:
+					if(gau32RemoteConfigSupport[enmCONFIG_DO] == TRUE)
+					{
+						/* Parse DO configuration */
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_RPM:
+					if(gau32RemoteConfigSupport[enmCONFIG_RPM] == TRUE)
+					{
+						/* Parse RPM configuration */
+					}
+					else
+						enmDeviceConfigState++;
+
+					break;
+				case enmCONFIG_NETWORK:
+					/* Completed */
+					if(gau32RemoteConfigSupport[enmCONFIG_NETWORK] == TRUE)
+					{
+						if(gu32ConfigOperationStatus == FALSE)
+						{
+							if((nwsof != NULL) && (nweof != NULL))
+							{
+								/*Make configuration extraction calculations
+								 * */
+								nwmlen = nweof - nwsof ;
+								nwconfig = (char *)malloc(sizeof(char) * nwmlen);
+								memset(nwconfig,0x00,nwmlen * sizeof(char));
+								if(nwconfig != NULL)
+								{
+									memcpy(nwconfig,nwsof,nwmlen);
+								}
+								else
+								{
+									/* Error in alloting memory for network configuration
+									 * TODO : Report Error  */
+									gau32RemoteConfigSupport[enmCONFIG_NETWORK] = FALSE;
+									enmDeviceConfigState++;
+								}
+								gu32ConfigOperationStatus = TRUE;
+							}
+							else
+							{
+								/* Network configuration not found. Parse Next Configuration */
+								enmDeviceConfigState++;
+							}
+
+						}
+						else
+						{
+//							if(getTokenNumberfromConfigString(nwconfig) == CONFIG_NW_PARAM)
+//							{
+								/* Extract Network configuration */
+								//extractNewtorkConfiguration();
+								if((gu32ConfigNetworkErrorDatabase == 0 ) && (nwconfig != NULL))
+								{
+									/* Write Configuration to memory */
+									ga8ConfigNWLength = strlen(nwconfig);
+									//itoa(strlen(nwconfig),ga8ConfigNWLength,10);
+									//gau8MemoryOperationWrite[I2C_MEM_CONFIGNWLEN] = TRUE;
+									//gau8MemoryOperationWrite[I2C_MEM_CONFIGNW] = TRUE;
+								}
+								gu32ConfigOperationStatus = FALSE;
+								enmDeviceConfigState++;
+//							}
+//							else
+//								gau32RemoteConfigSupport[enmCONFIG_NETWORK] = FALSE;
+						}
+
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_MODBUS485:
+					if(gau32RemoteConfigSupport[enmCONFIG_MODBUS485] == TRUE)
+					{
+						/* Parse Modbus485 configuration */
+						if(gu32ConfigOperationStatus == FALSE)
+						{
+							if((mb485sof != NULL) && (mb485eof != NULL))
+							{
+								/*Make configuration extraction calculations
+								 * */
+								mb485mlen = mb485eof - mb485sof ;
+								mb485config = (char *)malloc(sizeof(char) * mb485mlen);
+								memset(mb485config,0x00,sizeof(mb485config) * sizeof(char));
+								if(mb485config != NULL)
+								{
+									memcpy(mb485config,mb485sof,mb485mlen);
+								}
+								else
+								{
+									/* Error in alloting memory for modbus485 configuration
+									 * TODO : Report Error  */
+									gau32RemoteConfigSupport[enmCONFIG_NETWORK] = FALSE;
+									enmDeviceConfigState++;
+								}
+								gu32ConfigOperationStatus = TRUE;
+							}
+							else
+							{
+								/* Modbus485 configuration not found. Parse Next Configuration */
+								enmDeviceConfigState++;
+							}
+						}
+						else
+						{
+							/* Extract Network configuration */
+							//extractModbus485Configuration();
+							gu32ConfigOperationStatus = FALSE;
+							if((gu32ConfigModbus485ErrorDatabase == 0 ) && (mb485config != NULL))
+							{
+								/* Write Configuration to memory */
+								ga8ConfigMB485Length = strlen(mb485config);
+								//gau8MemoryOperationWrite[I2C_MEM_CONFIGMB485LEN] = TRUE;
+								//gau8MemoryOperationWrite[I2C_MEM_CONFIGMB485] = TRUE;
+							}
+							enmDeviceConfigState++;
+							//gau32RemoteConfigSupport[enmCONFIG_MODBUS485] = FALSE;
+
+						}
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_MODBUSTCP:
+					if(gau32RemoteConfigSupport[enmCONFIG_MODBUSTCP] == TRUE)
+					{
+						/* Parse Modbus TCP configuration */
+						if(gau32RemoteConfigSupport[enmCONFIG_MODBUSTCP] == TRUE)
+						{
+							/* Parse Modbus485 configuration */
+							if(gu32ConfigOperationStatus == FALSE)
+							{
+								if((mbTCPsof != NULL) && (mbTCPeof != NULL))
+								{
+									/*Make configuration extraction calculations
+									 * */
+									mbtcpmlen = mbTCPeof-mbTCPsof;
+									mbTCPconfig = (char *)malloc(sizeof(char) * mbtcpmlen);
+									memset(mbTCPconfig,0x00,mbtcpmlen * sizeof(char));
+									if(mbTCPconfig != NULL)
+									{
+										memcpy(mbTCPconfig,mbTCPsof,mbtcpmlen);
+									}
+									else
+									{
+										/* Error in alloting memory for modbus485 configuration
+										 * TODO : Report Error  */
+										gau32RemoteConfigSupport[enmCONFIG_MODBUSTCP] = FALSE;
+										enmDeviceConfigState++;
+									}
+									gu32ConfigOperationStatus = TRUE;
+								}
+								else
+								{
+									/* Modbus485 configuration not found. Parse Next Configuration */
+									enmDeviceConfigState++;
+								}
+							}
+							else
+							{
+								/* Extract Network configuration */
+								//extractModbusTCPConfiguration();
+								gu32ConfigOperationStatus = FALSE;
+
+								if((gu32ConfigModbusTCPErrorDatabase == 0 ) && (mbTCPconfig != NULL))
+								{
+									/* Write Configuration to memory */
+									ga8ConfigMBTCPLength =strlen(mbTCPconfig);
+									//gau8MemoryOperationWrite[I2C_MEM_CONFIGMBTCPLEN] = TRUE;
+									//gau8MemoryOperationWrite[I2C_MEM_CONFIGMBTCP] = TRUE;
+								}
+								enmDeviceConfigState++;
+								//gau32RemoteConfigSupport[enmCONFIG_MODBUSTCP] = FALSE;
+							}
+						}
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_DATAMGMT:
+					if(gau32RemoteConfigSupport[enmCONFIG_DATAMGMT] == TRUE)
+					{
+						/* Parse Data Mgmt configuration */
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_CAN_1:
+					if(gau32RemoteConfigSupport[enmCONFIG_CAN_1] == TRUE)
+					{
+						/* Parse CAN_1 configuration */
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_CAN_2:
+					if(gau32RemoteConfigSupport[enmCONFIG_CAN_2] == TRUE)
+					{
+						/* Parse CAN_2 configuration */
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_DEBUG:
+					if(gau32RemoteConfigSupport[enmCONFIG_DEBUG] == TRUE)
+					{
+						/* Parse Debug configuration */
+					}
+					else
+						enmDeviceConfigState++;
+					break;
+				case enmCONFIG_MQTT:
+					if(gau32RemoteConfigSupport[enmCONFIG_MQTT] == TRUE)
+					{
+						/* Parse MQTT configuration */
+					}
+					else
+						gu32ParseConfigAvailable = FALSE;
+
+
+					gau8MemoryOperationWrite[I2C_MEM_CONFIGSIGN] = TRUE;
+					gu32MemoryOperation = EEPROM_OPR_WRITE;
+				break;
+
+				default :
+
+					gu32ParseConfigAvailable = FALSE;
+					break;
+			}
+
+		}
+	}
+}
+
+uint32_t getTokenNumberfromConfigString(char * str)
+{
+	/* We need to verify if the configuration string has all the params expected */
+	uint32_t u32NoToken = 0;
+	char *tokenptr = strtok(str, ",");
+	while(tokenptr != NULL)
+	{
+		u32NoToken++;
+		tokenptr = strtok(NULL, ",");
+	}
+	return u32NoToken;
+}
+
+uint32_t getTokenNumberfromIPConfigString(char * str)
+{
+	/* We need to verify if the configuration string has all the params expected */
+	uint32_t u32NoToken = 0;
+	char *tokenptr = strtok(str, ".");
+	while(tokenptr != NULL)
+	{
+		u32NoToken++;
+		tokenptr = strtok(NULL, ".");
+	}
+	return u32NoToken;
+}
+void extractNewtorkConfiguration(void)
+{
+	gu32ExtractParamCounter = 0;
+	char *configptr = strtok(nwsof, ",");
+	while(configptr != NULL)
+	{
+		switch(gu32ExtractParamCounter)
+		{
+			case 0:
+				/*SOF Do not copy */
+			break;
+			case 1:
+				strcpy(gau8ConfigNewtorkIsEnabled,configptr);
+				break;
+			case 2:
+				strcpy(gau8ConfigNewtorkServerURL,configptr);
+				break;
+			case 3:
+				strcpy(gau8ConfigNewtorkConfigURL,configptr);
+				break;
+			case 4:
+				strcpy(gau8ConfigNewtorkAPN,configptr);
+				break;
+			case 5:
+				strcpy(gau8ConfigNewtorkUpFreqSupply,configptr);
+				break;
+			case 6:
+				strcpy(gau8ConfigNewtorkUpFreqBatt,configptr);
+				break;
+			case 7:
+				strcpy(gau8ConfigNewtorkType,configptr);
+				break;
+			case 8:
+				strcpy(gau8ConfigNewtorkGPSEnable,configptr);
+				break;
+			case 9:
+				strcpy(gau8ConfigNewtorkSendData,configptr);
+				break;
+			case 10:
+				strcpy(gau8ConfigNewtorkSendDataDisableTime,configptr);
+				break;
+			default:
+				break;
+		}
+		gu32ExtractParamCounter++;
+		configptr = strtok(NULL, ",");
+	}
+	gu32ExtractParamCounter = 0;
+	verifyNetworkConfigData();
+	enmDeviceConfigState++;
+}
+
+static void verifyNetworkConfigData(void)
+{
+	/*Log Errors Related to */
+	if(atoi(gau8ConfigNewtorkIsEnabled) > 2)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWISENABLED);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWISENABLED);
+
+	if(strlen(gau8ConfigNewtorkServerURL) > 150)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWSERURLLEN);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWSERURLLEN);
+
+	if(strlen(gau8ConfigNewtorkConfigURL) > 150)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWCONFURLLEN);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWCONFURLLEN);
+
+	if(strlen(gau8ConfigNewtorkAPN) > 50)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWAPN);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWAPN);
+
+	if(atoi(gau8ConfigNewtorkUpFreqSupply) > 10000000)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWUPFREQSUPPLY);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWUPFREQSUPPLY);
+
+	if(atoi(gau8ConfigNewtorkUpFreqBatt) > 10000000)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWUPFREQBATT);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWUPFREQBATT);
+
+	if(atoi(gau8ConfigNewtorkType) > 2)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWTYPE);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWTYPE);
+
+	if(atoi(gau8ConfigNewtorkGPSEnable) > 1)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWGPSEN);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWGPSEN);
+
+	if(atoi(gau8ConfigNewtorkSendData) > 1)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWSENDDATAEN);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWSENDDATAEN);
+
+	if(atoi(gau8ConfigNewtorkSendDataDisableTime) > 10000000)
+		gu32ConfigNetworkErrorDatabase |= (1 << enmCONFIG_NWSENDDATADISABLE);
+	else
+		gu32ConfigNetworkErrorDatabase &= ~(1 << enmCONFIG_NWSENDDATADISABLE);
+
+}
+
+void extractModbus485Configuration(void)
+{
+	/* Check if expected configuration is received
+	 * If yes then proceed else exit */
+	uint32_t u32Loopcounter = 0;
+	char *configptr = strtok(mb485sof, ",");//mb485config
+	gu32ExtractParamCounter = 0;
+	while(configptr != NULL)
+	{
+		switch(gu32ExtractParamCounter)
+		{
+			case 0:
+				/* SOF */
+				break;
+			case 1:
+				/*Is enabled*/
+				strcpy(gau8ConfigModbus485IsEnabled,configptr);
+				break;
+			case 2:
+				/* Termination */
+				strcpy(gau8ConfigModbus485Termination,configptr);
+				break;
+			case 3:
+				strcpy(gau8ConfigModbus485DataPoints,configptr);
+				break;
+			case 4:
+				/* BR */
+				strcpy(gau8ConfigModbus485UARTBR,configptr);
+				break;
+			case 5:
+				/* Start Bit*/
+				strcpy(gau8ConfigModbus485UARTStartBit,configptr);
+				break;
+			case 6:
+				/* Stop Bit*/
+				strcpy(gau8ConfigModbus485UARTStopBit,configptr);
+				break;
+			case 7:
+				/* Parity*/
+				strcpy(gau8ConfigModbus485UARTParity,configptr);
+				break;
+			case 8:
+				/* Modbus Address , FC and Data Points */
+				if(atoi(gau8ConfigModbus485DataPoints) <= CONFIG_MB485_MAXPARAMS)
+				{
+					for(u32Loopcounter = 0; u32Loopcounter < atoi(gau8ConfigModbus485DataPoints) ;u32Loopcounter++)
+					{
+						/*Populate Modbus Address Array from config received */
+						gau32ConfigModbus485Address[u32Loopcounter] = atoi(configptr);
+						configptr = strtok(NULL, ",");
+					}
+					u32Loopcounter = 0;
+					for(u32Loopcounter = 0; u32Loopcounter < atoi(gau8ConfigModbus485DataPoints) ;u32Loopcounter++)
+					{
+						/*Populate Modbus Address Array from config received */
+						gau32ConfigModbus485DFunctionCode[u32Loopcounter] = atoi(configptr);
+						configptr = strtok(NULL, ",");
+					}
+					u32Loopcounter = 0;
+					for(u32Loopcounter = 0; u32Loopcounter < atoi(gau8ConfigModbus485DataPoints) ;u32Loopcounter++)
+					{
+						/*Populate Modbus Address Array from config received */
+						gau32ConfigModbus485NoPoints[u32Loopcounter] = atoi(configptr);
+						configptr = strtok(NULL, ",");
+					}
+					u32Loopcounter = 0;
+				}
+				break;
+			case 9:
+				/* Polling Time */
+				strcpy(gau8ConfigModbus485PollingTime,configptr);
+				break;
+			case 10:
+				/* Response Time */
+				strcpy(gau8ConfigModbus485ResponseTime,configptr);
+				break;
+			default:
+				break;
+		}
+		if(gu32ExtractParamCounter != 8)
+			configptr = strtok(NULL, ",");
+
+		gu32ExtractParamCounter++;
+
+	}
+	gu32ExtractParamCounter = 0;
+	verifyModbus485ConfigData();
+	enmDeviceConfigState++;
+}
+
+static void verifyModbus485ConfigData(void)
+{
+   /* Log Errors Related to Modbus485 Configuration */
+	uint32_t u32LoopCounter = 0;
+
+	if(atoi(gau8ConfigModbus485IsEnabled) > 2)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485ISENABLED);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485ISENABLED);
+
+	if(atoi(gau8ConfigModbus485Termination) > 1)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485TERMINATE);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485TERMINATE);
+
+	if(atoi(gau8ConfigModbus485DataPoints) > CONFIG_MB485_MAXPARAMS)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485DATAPOINTS);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485DATAPOINTS);
+
+	if(atoi(gau8ConfigModbus485UARTBR) > 115200)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485UARTBR);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485UARTBR);
+
+	if(atoi(gau8ConfigModbus485UARTStartBit) > 3)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485UARTSTARTBIT);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485UARTSTARTBIT);
+
+	if(atoi(gau8ConfigModbus485UARTStopBit) > 3)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485UARTSTOPBIT);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485UARTSTOPBIT);
+
+	if(atoi(gau8ConfigModbus485PollingTime) > 1000000)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485POLLTIME);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485POLLTIME);
+
+	if(atoi(gau8ConfigModbus485ResponseTime) > 1000000)
+		gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485RESPTIME);
+	else
+		gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485RESPTIME);
+
+	for(u32LoopCounter = 0 ; u32LoopCounter < atoi(gau8ConfigModbus485DataPoints) ; u32LoopCounter++ )
+	{
+		if((gau32ConfigModbus485Address[u32LoopCounter] == 0) || (gau32ConfigModbus485Address[u32LoopCounter] > 65535))
+		{
+			/*Due to Address Dereferenceing No address can be 0 .
+			 * Also No address can be greater tha 65535
+			 * Log Error*/
+			gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485ADDRESS);
+			break;
+		}
+		else
+			gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485ADDRESS);
+	}
+
+	u32LoopCounter = 0;
+	for(u32LoopCounter = 0 ; u32LoopCounter < atoi(gau8ConfigModbus485DataPoints) ; u32LoopCounter++ )
+	{
+		if((gau32ConfigModbus485DFunctionCode[u32LoopCounter] == 0) || (gau32ConfigModbus485DFunctionCode[u32LoopCounter] > 5))
+		{
+			/*Due to Address Dereferenceing No address can be 0 .
+			 * Also No address can be greater tha 65535
+			 * Log Error*/
+			gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485FUCNTIONCODE);
+			break;
+		}
+		else
+			gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485FUCNTIONCODE);
+	}
+	u32LoopCounter = 0;
+	for(u32LoopCounter = 0 ; u32LoopCounter < atoi(gau8ConfigModbus485DataPoints) ; u32LoopCounter++ )
+	{
+		if((gau32ConfigModbus485NoPoints[u32LoopCounter] == 0) || (gau32ConfigModbus485NoPoints[u32LoopCounter] > 255))
+		{
+			/*Due to Address Dereferenceing No address can be 0 .
+			 * Also No address can be greater tha 65535
+			 * Log Error*/
+			gu32ConfigModbus485ErrorDatabase |= (1 << enmCONFIG_MB485DATAPOINTS);
+			break;
+		}
+		else
+			gu32ConfigModbus485ErrorDatabase &= ~(1 << enmCONFIG_MB485DATAPOINTS);
+	}
+
+}
+
+void extractModbusTCPConfiguration(void)
+{
+	/* Check if expected configuration is received
+	 * If yes then proceed else exit */
+	uint32_t u32Loopcounter = 0;
+	char *configptr = strtok(mbTCPsof, ",");
+	gu32ExtractParamCounter = 0;
+	while(configptr != NULL)
+	{
+		switch(gu32ExtractParamCounter)
+		{
+			case 0:
+				/* SOF */
+				break;
+			case 1:
+				/*Is enabled*/
+				strcpy(gau8ConfigModbusTCPIsEnabled,configptr);
+				break;
+			case 2:
+				/* Termination */
+				strcpy(gau8ConfigModbusTCPDataPoints,configptr);
+				break;
+			case 3:
+				strcpy(gau8ConfigModbusTCPIPDEVICE,configptr);
+				break;
+			case 4:
+				/* BR */
+				strcpy(gau8ConfigModbusTCPIPSUBNET,configptr);
+				break;
+			case 5:
+				/* Start Bit*/
+				strcpy(gau8ConfigModbusTCPIPSERVER,configptr);
+				break;
+			case 6:
+				/* Stop Bit*/
+				strcpy(gau8ConfigModbusTCPIPGATEWAY,configptr);
+				break;
+			case 7:
+				/* Parity*/
+				strcpy(gau8ConfigModbusTCPPORT,configptr);
+				break;
+			case 8:
+				/* Modbus Address , FC and Data Points */
+				if(atoi(gau8ConfigModbusTCPDataPoints) <= CONFIG_MBTCP_MAXPARAMS)
+				{
+					for(u32Loopcounter = 0; u32Loopcounter < atoi(gau8ConfigModbusTCPDataPoints) ;u32Loopcounter++)
+					{
+						/*Populate Modbus Address Array from config received */
+						gau32ConfigModbusTCPAddress[u32Loopcounter] = atoi(configptr);
+						configptr = strtok(NULL, ",");
+					}
+					u32Loopcounter = 0;
+					for(u32Loopcounter = 0; u32Loopcounter < atoi(gau8ConfigModbusTCPDataPoints) ;u32Loopcounter++)
+					{
+						/*Populate Modbus Address Array from config received */
+						gau32ConfigModbusTCPDFunctionCode[u32Loopcounter] = atoi(configptr);
+						configptr = strtok(NULL, ",");
+					}
+					u32Loopcounter = 0;
+					for(u32Loopcounter = 0; u32Loopcounter < atoi(gau8ConfigModbusTCPDataPoints) ;u32Loopcounter++)
+					{
+						/*Populate Modbus Address Array from config received */
+						gau32ConfigModbusTCPNoPoints[u32Loopcounter] = atoi(configptr);
+						configptr = strtok(NULL, ",");
+					}
+					u32Loopcounter = 0;
+				}
+				break;
+			case 9:
+				/* Polling Time */
+				strcpy(gau8ConfigModbusTCPPollingTime,configptr);
+				break;
+			case 10:
+				/* Response Time */
+				strcpy(gau8ConfigModbusTCPResponseTime,configptr);
+				break;
+			default:
+				break;
+		}
+		if(gu32ExtractParamCounter != 8)
+			configptr = strtok(NULL, ",");
+
+		gu32ExtractParamCounter++;
+
+	}
+	gu32ExtractParamCounter = 0;
+	verifyModbusTCPConfigData();
+	enmDeviceConfigState++;
+}
+
+static void verifyModbusTCPConfigData(void)
+{
+	/* Log Errors Related to Modbus485 Configuration */
+	uint32_t u32LoopCounter = 0;
+
+	if(atoi(gau8ConfigModbusTCPIsEnabled) > 2)
+		gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MBTCPISENABLED);
+	else
+		gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MBTCPISENABLED);
+
+	if(atoi(gau8ConfigModbusTCPDataPoints) > CONFIG_MBTCP_MAXPARAMS)
+		gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MBTCPDATAPOINTS);
+	else
+		gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MBTCPDATAPOINTS);
+
+	if(IP_IS_TYPE_V4(gau8ConfigModbusTCPIPDEVICE) != 1)
+		gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MBTCPIPDEVICE);
+	else
+		gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MBTCPIPDEVICE);
+
+	if(IP_IS_TYPE_V4(gau8ConfigModbusTCPIPSERVER) != 1)
+		gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MB485UARTSTOPBIT);
+	else
+		gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MB485UARTSTOPBIT);
+
+	if(IP_IS_TYPE_V4(gau8ConfigModbusTCPIPGATEWAY) != 1)
+		gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MB485POLLTIME);
+	else
+		gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MB485POLLTIME);
+
+	if(atoi(gau8ConfigModbusTCPPORT) > 65535)
+		gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MBTCPIPPORT);
+	else
+		gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MBTCPIPPORT);
+
+	for(u32LoopCounter = 0 ; u32LoopCounter < atoi(gau8ConfigModbusTCPDataPoints) ; u32LoopCounter++ )
+	{
+		if((gau32ConfigModbusTCPAddress[u32LoopCounter] == 0) || (gau32ConfigModbusTCPAddress[u32LoopCounter] > 65535))
+		{
+			/*Due to Address Dereferenceing No address can be 0 .
+			 * Also No address can be greater tha 65535
+			 * Log Error*/
+			gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MBTCPADDRESS);
+			break;
+		}
+		else
+			gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MBTCPADDRESS);
+	}
+
+	u32LoopCounter = 0;
+	for(u32LoopCounter = 0 ; u32LoopCounter < atoi(gau8ConfigModbusTCPDataPoints) ; u32LoopCounter++ )
+	{
+		if((gau32ConfigModbusTCPDFunctionCode[u32LoopCounter] == 0) || (gau32ConfigModbusTCPDFunctionCode[u32LoopCounter] > 5))
+		{
+			/*Due to Address Dereferenceing No address can be 0 .
+			 * Also No address can be greater tha 65535
+			 * Log Error*/
+			gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MBTCPFUNCTIONCODE);
+			break;
+		}
+		else
+			gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MBTCPFUNCTIONCODE);
+	}
+	u32LoopCounter = 0;
+	for(u32LoopCounter = 0 ; u32LoopCounter < atoi(gau8ConfigModbus485DataPoints) ; u32LoopCounter++ )
+	{
+		if((gau32ConfigModbusTCPNoPoints[u32LoopCounter] == 0) || (gau32ConfigModbusTCPNoPoints[u32LoopCounter] > 255))
+		{
+			/*Due to Address Dereferenceing No address can be 0 .
+			 * Also No address can be greater tha 65535
+			 * Log Error*/
+			gu32ConfigModbusTCPErrorDatabase |= (1 << enmCONFIG_MBTCPDATALEN);
+			break;
+		}
+		else
+			gu32ConfigModbusTCPErrorDatabase &= ~(1 << enmCONFIG_MBTCPDATALEN);
+	}
+}
+
+uint32_t validateIPParams(char * ipStr)
+{
+	/*
+	 * Evaluate IP string format
+	 * 0-255.0-255.0-255.0-255*/
+	//uint32_t u32Loopcounter = 0;
+//	uint32_t u32Status = 0;
+//	int * match_length = 0;
+//	int match_idx =0;// re_matchp(pattern, string_to_search, &match_length);
+//
+//
+//
+//	re_t pattern = re_compile("^([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+//							  "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+//							  "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))."
+//							  "([0-9]|[1-9][0-9]|1([0-9][0-9])|2([0-4][0-9]|5[0-5]))$");
+//
+//	match_idx = re_matchp(pattern, ipStr,(int*) match_length);
+//	if (match_idx != -1)
+//	{
+//		u32Status = 1;
+//	}
+//	else
+//		u32Status = 0;
+
+
+
+	return 1;
+}
+

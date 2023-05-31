@@ -1,0 +1,6 @@
+modbus_rs485.c:237:10:modbusCRC16	8	static
+modbus_rs485.c:291:6:updateModbusQueryFrameRTU	8	static
+modbus_rs485.c:624:6:resetModbusPort	8	static
+modbus_rs485.c:341:6:modbusQueryFSM	152	static
+modbus_rs485.c:662:6:uploadSlaveData	24	static
+modbus_rs485.c:758:6:setupModbusRTU	4	static

@@ -1,0 +1,1052 @@
+/*******************************************************************************
+* Title                 :   Modbus Client Implementation - TCP/IP Interface
+* Filename              :   modbus_tcp.c
+* Author                :   Hrishikesh Limaye
+* Origin Date           :   08/03/2022
+* Version               :   1.0.0
+* Compiler              :
+* Target                :   STM32F437VI - Tor4Eth
+* Notes                 :   None
+*
+* Copyright (c) by KloudQ Technologies Limited.
+
+  This software is copyrighted by and is the sole property of KloudQ
+  Technologies Limited.
+  All rights, title, ownership, or other interests in the software remain the
+  property of  KloudQ Technologies Limited. This software may only be used in
+  accordance with the corresponding license agreement. Any unauthorized use,
+  duplication, transmission, distribution, or disclosure of this software is
+  expressly forbidden.
+
+  This Copyright notice may not be removed or modified without prior written
+  consent of KloudQ Technologies Limited.
+
+  KloudQ Technologies Limited reserves the right to modify this software
+  without notice.
+*
+*
+*******************************************************************************/
+/*************** FILE REVISION LOG *****************************************
+*
+*    Date    Version   Author         	  Description
+*  08/03/22   1.0.0    Hrishikesh Limaye   Initial Release.
+*
+*******************************************************************************/
+
+/** @file  modbus_tcp.c
+ *  @brief Modbus TCP/IP Client Implementation
+ *
+ *
+------------------------------------------------------------------------------
+How is data stored in Modbus TCP/IP ?
+------------------------------------------------------------------------------
+Modbus TCP/IP (also Modbus-TCP) is simply the Modbus RTU protocol
+with a TCP interface that runs on Ethernet.The Modbus messaging structure is
+the application protocol that defines the rules for organizing and interpreting
+the data independent of the data transmission medium.
+
+Note that the TCP/IP combination is merely a transport protocol, and does not
+define what the data means or how the data is to be interpreted
+
+In practice, Modbus TCP embeds a standard Modbus data frame into a TCP
+frame, without the Modbus checksum
+
+Modbus Application Header Format
+
+(This information is embedded into the data portion of the TCP frame)
+
+| Transaction ID | ProtocolID | Length | UnitID | Fucntion Code | Data |
+
+	Transaction ID - 2 Bytes
+	ProtocolID - 2 Bytes
+	Length - 2 Bytes
+	UnitID - 1 Byte
+	Fucntion Code - 1 Byte
+	Data - Varies
+
+ */
+
+/******************************************************************************
+* Includes
+*******************************************************************************/
+#include "lwip/debug.h"
+#include "lwip/stats.h"
+#include "lwip/tcp.h"
+#include "lwip.h"
+#include "lwip/init.h"
+#include "lwip/netif.h"
+#include "ip4_addr.h"
+#include "main.h"
+#include "memp.h"
+#include "main.h"
+#include <stdio.h>
+#include <string.h>
+
+#include "applicationdefines.h"
+#include "externs.h"
+#include "err.h"
+#include "modbus_tcp.h"
+#include "user_timer.h"
+#include "externs.h"
+
+/******************************************************************************
+* Module Preprocessor Constants
+*******************************************************************************/
+/**
+ * Enable TCP/IP in LWiP Stack .
+ */
+#if LWIP_TCP
+/**
+ * Doxygen tag for documenting variables and constants
+ */
+
+/******************************************************************************
+* Module Preprocessor Macros
+*******************************************************************************/
+
+/******************************************************************************
+* Module Typedefs
+*******************************************************************************/
+
+/******************************************************************************
+* Module Variable Definitions
+*******************************************************************************/
+u8_t  recev_buf[50];
+__IO uint32_t message_count=0;
+
+u8_t   data[100];
+
+__IO u8_t Tcp_flag = 0;
+
+struct tcp_pcb *mbclient_pcb = NULL;
+err_enum_t err = 0;
+
+struct pbuf *mbpayload;
+
+/* Modbus */
+strctModbusTCPMaster strMbClient;
+
+uint32_t gu32MBTCPTimer = 0;
+uint32_t gu32MBPOLLTimer = 0;
+uint32_t gu32MBConnected = 0;
+uint32_t gu32MBOperateFlag = 0;
+uint32_t gu32MBResponseFlag = 0;
+uint32_t gu32MBDataByteCounter = 0;
+/* Will be addition of all data points */
+uint32_t gu32MBDataByteCounterLimit = 0;
+uint32_t gu32MBDataLengthBytes = 0;
+
+/*30-12-2020 will initiate ethernet re connection */
+uint32_t gu32MBNotRespondingFlag = 0;
+/*Indicated when to fetch data
+ * 0 - Fetch Data
+ * 1-  Process Fetched data for payload */
+uint32_t gu32MBProcessPayloadFlag = 0;
+
+uint32_t gu32MBStatusFlag = 0;
+uint32_t gu32MBNotResponding = 0;
+
+uint32_t temp = 0;
+uint32_t gu32PayloadLength = 0;
+
+volatile uint32_t gu32MBClientConnectedFlag = 0;
+char gau8MBPayloadString[1100] = {'0'};
+char gau8TempMBPayloadString[1100] = {'0'};
+typedef enum
+{
+	enmMB_IDLE,
+	enmMB_CONNECTING,
+	enmMB_CONNECTED,
+	enmMB_AWAITINGRESPONSE,
+	enmMB_RESPONSERECEIVED,
+	enmMB_RESPONSETIMEOUT,
+	enmMB_CLOSECLIENT
+}enmMBState;
+
+enmMBState enmMBCurrentState = enmMB_CONNECTING;
+
+
+/* Modbus Addresses to fetch . Arranged as seperate
+ * array(s) for function code , address and No of points to fetch.
+ * These arrays are updated after over the air configuration
+ * Currently provision of 75 queries is done based on project requirement .
+ * If more queries are to be accomodated increase the array size and payload size accordingly .
+ *
+ * NOTE : DO NOT MAKE THEM CONST .
+ *  */
+uint32_t gu32MBTCPClientFuncCode[75]=
+{
+	1,	1,	1,	1,	1,	1,	4,	4,	4,	4,
+	4,	4,	4,	4,	4,	4,	4,	4,	4,	4,
+	4,	4,	3,	3,	3,	3,	3,	3,	3,	3,
+	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,
+	3,	3,	3,	3,	3,	3,	3,	3,	3
+};
+
+uint32_t gu32MBTCPClientAddress[75]=
+{
+	1,		6,		9,		11,		16,		21,		1,		33,		201,	306,
+	315,	327,	375,	668,	673,	678,	680,	686,	690,	693,
+	698,	758,	301,	308,	318,	323,	325,	345,	356,	359,
+	361,	373,	375,	387,	392,	394,	397,	399,	401,	403,
+	404,	409,	439,	455,	471,	499,	505,	511,	521
+};
+
+uint32_t gu32MBTCPClientNoofPoints[75]=
+{
+	4,	1,	1,	4,	2,	13,	29,	5,	2,	3,
+	6,	8,	2,	1,	1,	1,	4,	3,	2,	2,
+	13,	1,	3,	9,	3,	1,	14,	5,	1,	1,
+	4,	1,	11,	3,	2,	2,	1,	1,	1,	1,
+	1,	3,	1,	2,	2,	4,	1,	1,	1
+};
+
+/* Contains Data status for configured IDs
+ * 1 = Error Received
+ * 0 = Legal Data Received
+ * */
+uint32_t gu32MBTCPDataStatus[300]=
+{
+   0, 0,  0,  0,  0,  0,0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+	  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0
+};
+
+
+/* Note : As per initial bluestar requiremnt the device
+ * was suppose to apply upper and lower limits to the data.
+ * This has been implemented at server .
+ * If for any other requiremnt uncomment below section and
+ * enable releavnt code in payload processing .
+ * */
+
+///* Contains Data Point upper Limit
+// * Max Value Expected from data point
+// * */
+//uint32_t gu32MBTCPDataPointUL[49]=
+//{
+//	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+//};
+//
+///* Contains Data Point lower Limit
+// * Min Value Expected from data point
+// * */
+//int32_t gu32MBTCPDataPointLL[49]=
+//{
+//	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+//};
+
+
+/* ECHO protocol states */
+enum echoclient_states
+{
+  ES_NOT_CONNECTED = 0,
+  ES_CONNECTED,
+  ES_RECEIVED,
+  ES_CLOSING,
+};
+
+/* structure to be passed as argument to the tcp callbacks */
+struct mbclient
+{
+  enum echoclient_states state; /* connection status */
+  struct tcp_pcb *pcb;          /* pointer on the current tcp_pcb */
+  struct pbuf *p_tx;            /* pointer on pbuf to be transmitted */
+};
+
+/******************************************************************************
+* Function Prototypes
+*******************************************************************************/
+/* Private function prototypes -----------------------------------------------*/
+static err_t tcp_modbusclient_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
+static void tcp_modbusclient_connection_close(struct tcp_pcb *tpcb, struct mbclient * es);
+static err_t tcp_modbusclient_poll(void *arg, struct tcp_pcb *tpcb);
+static err_t tcp_modbusclient_sent(void *arg, struct tcp_pcb *tpcb, u16_t len);
+static void tcp_modbusclient_send(struct tcp_pcb *tpcb, struct mbclient * es);
+static err_t tcp_modbusclient_connected(void *arg, struct tcp_pcb *tpcb, err_t err);
+static void  tcp_modbusclient_error(void *arg, err_t err);
+void setupModbus(void);
+
+/******************************************************************************
+* Function Definitions
+*******************************************************************************/
+/******************************************************************************
+* Function : updateModbusQueryFrame(void)
+*//**
+* \b Description:
+*
+* This function is used to update ModbusTCP Query Frame
+*
+* PRE-CONDITION: Init modbus structure instance
+*
+* POST-CONDITION: None
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+* 	updateModbusQueryFrame();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void updateModbusQueryFrame(void)
+{
+	/* Form Query Frame String */
+	/* TID */
+	strMbClient.u32QueryFrame[0] = (MB_TCP_TID >> 8);
+	strMbClient.u32QueryFrame[1] = (MB_TCP_TID & 0xFF);
+	/* PID */
+	strMbClient.u32QueryFrame[2] = (MB_TCP_PID >> 8);
+	strMbClient.u32QueryFrame[3] = (MB_TCP_PID & 0xFF);
+	/* Query Length = UID + Function Code + Data Packet */
+	strMbClient.u32QueryFrame[4] = (6 >> 8);
+	strMbClient.u32QueryFrame[5] = (6 & 0xFF);
+	/* UID */
+	strMbClient.u32QueryFrame[6] = (strMbClient.u32UnitId);
+	/* Function Code */
+	strMbClient.u32QueryFrame[7] = gu32MBTCPClientFuncCode[message_count];
+	/* Register Starting Address */
+	strMbClient.u32QueryFrame[8] = ((gu32MBTCPClientAddress[message_count]- MB_ADDRESS_DEREF) >> 8);
+	strMbClient.u32QueryFrame[9] = ((gu32MBTCPClientAddress[message_count]- MB_ADDRESS_DEREF)& 0xFF);
+	/* No of Data Points to Read */
+	strMbClient.u32QueryFrame[10] = ((gu32MBTCPClientNoofPoints[message_count]) >> 8);
+	strMbClient.u32QueryFrame[11] = ((gu32MBTCPClientNoofPoints[message_count])& 0xFF);
+	temp++;
+	/* End of Query Frame */
+}
+
+/******************************************************************************
+* Function : setupModbus(void)
+*//**
+* \b Description:
+*
+* This function is used to Initialise MODBUS-Tcp Structure
+*
+* PRE-CONDITION: Init modbus structure instance
+*
+* POST-CONDITION: None
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+* 	setupModbus();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void setupModbus(void)
+{
+	strMbClient.u32MBQueryCounter = 0;
+	/* Number of Queries configured */
+	strMbClient.u32NoofRegConfigured = gu32Modbus485RegisterFetch;//44;
+	for(temp = 0; temp < strMbClient.u32NoofRegConfigured ;temp++)
+	{
+		/* Calculates how many data values will be there in payload
+		 * Tested -> 19/11/2020 */
+		gu32MBDataByteCounterLimit += gu32MBTCPClientNoofPoints[temp];
+ 	}
+	strMbClient.u32MBNoQueryAttempts = 0;
+#if(USE_MB_DATALIMITS == TRUE)
+	/*Used for populating breach limits */
+//	for(temp = 0; temp < gu32MBDataByteCounterLimit ;temp++)
+//	{
+//		gu32MBTCPDataPointLL[temp] = -5;
+//		gu32MBTCPDataPointUL[temp] = 2000;
+//	}
+#endif
+	strMbClient.u32UnitId = 1;
+}
+
+/******************************************************************************
+* Function : mbTCPPoll(void)
+*//**
+* \b Description:
+*
+* This function is used to Poll data over Tcp . Client Implementation
+*
+* PRE-CONDITION: Init LWIP and ethernet interface
+*
+* POST-CONDITION: None
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+* 	mbTCPPoll();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void mbTCPPoll(void)
+{
+	if( (gu32MBPOLLTimer != 0 ))//gu32EthLinkAlert == 1 gu32MBProcessPayloadFlag  ||
+		return;
+
+	/* Due to PHY Address Problem FW is not getting ethernt link status, hence comment all logic
+	 * patches based on gu32EthLinkAlert */
+	switch(enmMBCurrentState)
+	{
+		case enmMB_IDLE:
+			/* Do not operate modbus client */
+			enmMBCurrentState = enmMB_CONNECTING;
+			break;
+		case enmMB_CONNECTING:
+			/* Attempt TCP connection */
+			tcp_modbusclient_connect();
+			enmMBCurrentState = enmMB_CONNECTED;
+
+		break;
+		case enmMB_CONNECTED:
+			/* Start Sending query , next query */
+			if(gu32MBTCPTimer == 0)
+			{
+				/*Connection Time out */
+				enmMBCurrentState = enmMB_RESPONSETIMEOUT;
+			}
+			break;
+		case enmMB_AWAITINGRESPONSE:
+			/* Query Sent . Awaiting response from slave */
+			 if(gu32MBTCPTimer == 0)
+				enmMBCurrentState = enmMB_RESPONSETIMEOUT;
+
+			break;
+
+		case enmMB_RESPONSERECEIVED:
+			/* Parse response for data or exception
+			 * Check TID,PID,FC and data
+			 * Parse data or Error */
+			if(gu32MBOperateFlag)
+			{
+//				if(gu32EthLinkAlert == 1)
+//					gu32EthLinkAlert = 0;
+
+				/* Check if Response is valid */
+				if((((uint16_t)strMbClient.s8SlaveResponseArray[0] << 8) + strMbClient.s8SlaveResponseArray[1])
+						== MB_TCP_TID)
+				{
+					/* TID is valid */
+					if((((uint16_t)strMbClient.s8SlaveResponseArray[2] << 8) + strMbClient.s8SlaveResponseArray[3])
+						== MB_TCP_PID)
+					{
+						/* PID is valid */
+						/*Get Payload Length (2 bytes)= UID (1 Byte) + Function code (1 byte) + Data*/
+						gu32PayloadLength = ((uint32_t)strMbClient.s8SlaveResponseArray[4] << 8)
+								+ strMbClient.s8SlaveResponseArray[5];
+						if(strMbClient.s8SlaveResponseArray[6] == strMbClient.u32UnitId)
+						{
+							/* 1 Byte - UID is Valid */
+							if(strMbClient.s8SlaveResponseArray[7] == gu32MBTCPClientFuncCode[message_count])
+							{
+								/* Function code is valid */
+								gu32MBDataLengthBytes = ((uint8_t)strMbClient.s8SlaveResponseArray[8]);
+								if(strMbClient.s8SlaveResponseArray[7] == 1)
+								{
+									/*Read coil . Directly parse bytes */
+									uint32_t LoopCounter = 0;
+									for(LoopCounter = 0; LoopCounter < gu32MBDataLengthBytes; LoopCounter++)
+									{
+										strMbClient.u32SlaveData[gu32MBDataByteCounter] = strMbClient.s8SlaveResponseArray[9 + LoopCounter];
+										gu32MBTCPDataStatus[gu32MBDataByteCounter++] = 2;
+									}
+									if(gu32MBDataLengthBytes != gu32MBTCPClientNoofPoints[message_count])
+										gu32MBDataByteCounter += (gu32MBTCPClientNoofPoints[message_count] - gu32MBDataLengthBytes);
+								}
+								else
+								{
+									if(gu32MBDataLengthBytes == (2 * gu32MBTCPClientNoofPoints[message_count]))
+									{
+										/* Data Length is as expected . Capture the data*/
+										/* strMbClient.s8SlaveResponseArray[9] - Start of data */
+										uint32_t u32LoopCounter = 0;
+										for(u32LoopCounter = 0; u32LoopCounter < gu32MBTCPClientNoofPoints[message_count];u32LoopCounter++)
+										{
+											if((int32_t)strMbClient.s8SlaveResponseArray[9 + (2 * u32LoopCounter) + 1] < 0)
+											{
+												/*Second byte is negative */
+												strMbClient.u32SlaveData[gu32MBDataByteCounter] = ((int16_t)strMbClient.s8SlaveResponseArray[9 + (2* u32LoopCounter)] << 8)
+																								 + (int16_t)strMbClient.s8SlaveResponseArray[9 + (2 * u32LoopCounter) + 1] + 256 ;
+											}
+											else
+											{
+												/*Second byte is positive */
+												strMbClient.u32SlaveData[gu32MBDataByteCounter] = ((int16_t)strMbClient.s8SlaveResponseArray[9 + (2* u32LoopCounter)] << 8)
+																								 + (int16_t)strMbClient.s8SlaveResponseArray[9 + (2 * u32LoopCounter) + 1] ;
+											}
+
+											/* Valid Data available for this address */
+											gu32MBTCPDataStatus[gu32MBDataByteCounter] = 0;
+											//gu32MBTCPDataStatus[RegisterCounter] = 0;
+											gu32MBDataByteCounter++;
+											if(gu32MBDataByteCounter >= gu32MBDataByteCounterLimit)
+												gu32MBDataByteCounter = 0;
+										}
+									}
+									else
+									{
+										/* Incorrect Length */
+										gu32MBDataByteCounter += gu32MBTCPClientNoofPoints[message_count];
+									}
+								}
+							}
+							else if((strMbClient.s8SlaveResponseArray[7] & 0x80 ) == 0x80)
+							{
+								/* Function code is invalid .
+								 * Log Error Code */
+								uint32_t u32TempLoopCounter = 0;
+								for(u32TempLoopCounter = 0; u32TempLoopCounter < gu32MBTCPClientNoofPoints[message_count];u32TempLoopCounter++)
+								{
+									strMbClient.u32SlaveData[gu32MBDataByteCounter] = strMbClient.s8SlaveResponseArray[8] ;
+									gu32MBTCPDataStatus[gu32MBDataByteCounter++] = 1;
+								}
+							}
+						}
+						else
+						{
+							/* Incorrect UID */
+						}
+					}
+					else
+					{
+						/*PID Invalid*/
+					}
+				}
+				else
+				{
+					/* TID Invalid */
+				}
+				gu32MBOperateFlag = 0;
+				enmMBCurrentState = enmMB_CONNECTING;
+				/* Next Query */
+				message_count++;
+				if(message_count >= strMbClient.u32NoofRegConfigured)
+				{
+					/* All data points are fetched .
+					 * Process data for payload */
+					message_count = 0;
+					gu32MBProcessPayloadFlag = 1;
+					gu32MBDataByteCounter = 0;
+				}
+				else
+				{
+					/* Do Nothing */
+				}
+				gu32MBPOLLTimer = gu32ModbusTCPPollingTime;
+				memset(strMbClient.s8SlaveResponseArray,0x00,sizeof(strMbClient.s8SlaveResponseArray));
+				//gu32MBProcessPayloadFlag = 1;
+			}
+			break;
+
+		case enmMB_RESPONSETIMEOUT:
+			/* Response not received . Comm Error */
+			/* todo : Add retry Mechanism */
+			strMbClient.u32MBNoQueryAttempts++;
+			if(strMbClient.u32MBNoQueryAttempts > 3)
+			{
+				//gu32EthLinkAlert = 1;     // could be possible cause of No TCP data .
+
+				uint32_t temploopcounttcp = gu32MBDataByteCounter;
+				uint32_t iteratortcp = 0;
+				gu32MBDataByteCounter += gu32MBTCPClientNoofPoints[message_count];
+				for(iteratortcp = temploopcounttcp ; iteratortcp < gu32MBDataByteCounter ; iteratortcp++)
+					strMbClient.u32SlaveData[iteratortcp] = 0;
+
+				strMbClient.u32MBNoQueryAttempts = 0;
+				message_count++;
+
+				if(message_count >= strMbClient.u32NoofRegConfigured)
+				{
+					/* All data points are fetched .
+					 * Process data for payload */
+					message_count = 0;
+					gu32MBProcessPayloadFlag = 1;
+					gu32MBNotResponding++;
+					gu32MBDataByteCounter = 0;
+					/*Added 30-12-2020 . MB Client Not Responding */
+					gu32MBClientConnectedFlag = 0;
+				}
+			}
+			enmMBCurrentState = enmMB_CLOSECLIENT;
+			/*Had Missed this . Added on 7/2/2022 */
+			memset(strMbClient.s8SlaveResponseArray,0x00,sizeof(strMbClient.s8SlaveResponseArray));
+			break;
+
+		case enmMB_CLOSECLIENT:
+			/*Failure,Errors , other wise close TCP client */
+			if(mbclient_pcb != NULL)
+			{
+				mem_free(mbclient_pcb);
+				tcp_close(mbclient_pcb);
+			}
+
+			enmMBCurrentState = enmMB_CONNECTING;
+			gu32MBOperateFlag = 0;
+			gu32MBPOLLTimer = gu32ModbusTCPPollingTime;
+			break;
+		default:
+			enmMBCurrentState = enmMB_CONNECTING;
+		/*Unknown State */
+		break;
+	}
+}
+
+
+/******************************************************************************
+* Function : updateModbusPayload(void)
+*//**
+* \b Description:
+*
+* This function is used to Update modbus data in device payload
+*
+* PRE-CONDITION: None.
+*
+* POST-CONDITION: None
+*
+* @return 		None.
+*
+* \b Example Example:
+* @code
+*
+* 	updateModbusPayload();
+*
+* @endcode
+*
+* @see
+*
+* <br><b> - HISTORY OF CHANGES - </b>
+*
+* <table align="left" style="width:800px">
+* <tr><td> Date       </td><td> Software Version </td><td> Initials </td><td> Description </td></tr>
+* <tr><td> 08/03/2022 </td><td> 0.0.1            </td><td> HL100133 </td><td> Interface Created </td></tr>
+* </table><br><br>
+* <hr>
+*
+*******************************************************************************/
+void updateModbusPayload(void)
+{
+	static uint32_t RegisterCounter = 0;
+	static char buffer[6];
+	static int32_t value;
+
+//	if(gu32MBProcessPayloadFlag)
+//	{
+		value = strMbClient.u32SlaveData[RegisterCounter];    // Signed Integer
+		/* Process Payload */
+		if(RegisterCounter == 0)
+		{
+			/* Copy Device Info to GSM Payload */
+			memset(gau8MBPayloadString, 0x00, (1100 * sizeof(char)));
+		}
+
+		if(RegisterCounter < (gu32MBDataByteCounterLimit))
+		{
+			if(gu32MBTCPDataStatus[RegisterCounter] == 1)
+			{
+				/* Error Received for this data point .
+				 * Error is parsed, indicate it in payload */
+				strcat(gau8MBPayloadString,"E");
+				memset(buffer, 0x00, (6 * sizeof(char)));
+				itoa(value,buffer,MB_PAYLOAD_RADIX);	   	   				  // Decimal String
+				strcat(gau8MBPayloadString,buffer);
+				strcat(gau8MBPayloadString,PAYLOAD_SEPARATOR);
+			}
+			else if(gu32MBTCPDataStatus[RegisterCounter] == 2)
+			{
+				/* Coil Data .Represent in binary .
+				 * */
+				if(value < 0)
+					value += 256;
+
+				memset(buffer, 0x00, (6 * sizeof(char)));
+				itoa(value,buffer,10);	   	   				  // decimal String
+				strcat(gau8MBPayloadString,buffer);
+				strcat(gau8MBPayloadString,PAYLOAD_SEPARATOR);
+			}
+			else
+			{
+#if(USE_MB_DATALIMITS == TRUE)
+
+//				if((int32_t)value > (int32_t)gu32MBTCPDataPointUL[RegisterCounter])
+//				{
+//					/* Data point value is greater than MAX value */
+//					strcat(gau8MBPayloadString,"+OB");
+//					strcat(gau8MBPayloadString,PAYLOAD_SEPARATOR);
+//				}
+//				else if ((int32_t)value < (int32_t)gu32MBTCPDataPointLL[RegisterCounter])
+//				{
+//					/* Data point value is less than MIN value */
+//					strcat(gau8MBPayloadString,"-OB");
+//					strcat(gau8MBPayloadString,PAYLOAD_SEPARATOR);
+//				}
+//				else
+//				{
+					memset(buffer, 0x00, (6 * sizeof(char)));
+					itoa(value,buffer,MB_PAYLOAD_RADIX);	   	   			// Decimal String
+					strcat(gau8MBPayloadString,buffer);
+					strcat(gau8MBPayloadString,PAYLOAD_SEPARATOR);
+//				}
+#elif(USE_MB_DATALIMITS == FALSE)
+				memset(buffer, 0x00, (6 * sizeof(char)));
+				itoa(value,buffer,MB_PAYLOAD_RADIX);	   	   			// Decimal String
+				strcat(gau8MBPayloadString,buffer);
+				strcat(gau8MBPayloadString,PAYLOAD_SEPARATOR);
+#endif
+			}
+			//strMbClient.u32SlaveData[RegisterCounter] = 0;
+			/*Added on 20-1-2020 */
+			//gu32MBTCPDataStatus[RegisterCounter] = 0;
+			RegisterCounter++;
+		}
+		else
+		{
+			/* MB Payload is updated */
+			memcpy(gau8TempMBPayloadString,gau8MBPayloadString,sizeof(gau8MBPayloadString));
+			memset(gau8MBPayloadString,0x00,1100 * sizeof(char));
+			if(gu32MBProcessPayloadFlag)
+				gu32MBProcessPayloadFlag = 0;
+			RegisterCounter = 0;
+			//gu32MBClientConnectedFlag = 0;
+			//gu32MBDataByteCounter = 0;
+		}
+	//}
+//	else
+//	{
+//		/* Data Fetching in process */
+//	}
+}
+
+/**
+  * @brief  Connects to the TCP echo server
+  * @param  None
+  * @retval None
+  */
+void tcp_modbusclient_connect(void)
+{
+	if(gu32MBOperateFlag)
+		return;
+
+  ip4_addr_t DestIPaddr;
+
+  /* create new tcp pcb */
+
+	  mbclient_pcb = tcp_new();
+
+	if (mbclient_pcb != NULL)
+	{
+	IP4_ADDR( &DestIPaddr, IP_ADDRESS_DESTI[0], IP_ADDRESS_DESTI[1], IP_ADDRESS_DESTI[2], IP_ADDRESS_DESTI[3]);
+	  tcp_err(mbclient_pcb, tcp_modbusclient_error);
+	  tcp_bind(mbclient_pcb, IP_ADDR_ANY,8009);
+
+
+
+	  /* connect to destination address/port */
+	  gu32MBClientConnectedFlag = 0;
+	  err = tcp_connect(mbclient_pcb,&DestIPaddr,gu32ModbusTCPPort,tcp_modbusclient_connected); //502
+	  if(err != ERR_OK)
+	  {
+		Error_Handler();
+	  }
+	  else
+	  {
+		/* Changed on 14-12-2020 */
+		gu32MBTCPTimer = THREE_SEC;
+	  }
+	}
+
+
+}
+
+
+/**
+  * @brief Function called when TCP connection established
+  * @param tpcb: pointer on the connection contol block
+  * @param err: when connection correctly established err should be ERR_OK
+  * @retval err_t: returned error
+  */
+static err_t tcp_modbusclient_connected(void *arg, struct tcp_pcb *tpcb, err_t err)
+{
+  struct mbclient *es = NULL;
+
+  if (err == ERR_OK) {
+    /* allocate structure es to maintain tcp connection informations */
+    es = (struct mbclient *)mem_malloc(sizeof(struct mbclient));
+
+    if (es != NULL) {
+      es->state = ES_CONNECTED;
+      es->pcb = tpcb;
+      /* 14-12-2020 */
+      updateModbusQueryFrame();
+      gu32MBClientConnectedFlag = 1;
+      /* allocate pbuf */
+      es->p_tx = pbuf_alloc(PBUF_TRANSPORT, 12 , PBUF_POOL);
+      if (es->p_tx) {
+        /* copy data to pbuf */
+        pbuf_take(es->p_tx, (uint8_t *)strMbClient.u32QueryFrame, 12);
+
+        /* pass newly allocated es structure as argument to tpcb */
+        tcp_arg(tpcb, es);
+
+        /* initialize LwIP tcp_recv callback function */
+        tcp_recv(tpcb, tcp_modbusclient_recv);
+
+        /* initialize LwIP tcp_sent callback function */
+        tcp_sent(tpcb, tcp_modbusclient_sent);
+
+        /* initialize LwIP tcp_poll callback function */
+        tcp_poll(tpcb, tcp_modbusclient_poll, 1); // changed from 1 21/1/2021
+
+        /* send data */
+        gu32MBOperateFlag = 1;
+        enmMBCurrentState = enmMB_CONNECTED;
+        tcp_modbusclient_send(tpcb,es);
+        gu32MBTCPTimer = FIVE_SEC;
+
+        return ERR_OK;
+      }
+    } else {
+      /* close connection */
+      tcp_modbusclient_connection_close(tpcb, es);
+
+      /* return memory allocation error */
+      return ERR_MEM;
+    }
+  } else {
+    /* close connection */
+    tcp_modbusclient_connection_close(tpcb, es);
+  }
+  return err;
+}
+
+/**
+  * @brief tcp_receiv callback
+  * @param arg: argument to be passed to receive callback
+  * @param tpcb: tcp connection control block
+  * @param err: receive error code
+  * @retval err_t: retuned error
+  */
+static err_t tcp_modbusclient_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
+{
+  struct mbclient *es;
+  err_t ret_err;
+
+
+  LWIP_ASSERT("arg != NULL",arg != NULL);
+
+  es = (struct mbclient *)arg;
+
+  /* if we receive an empty tcp frame from server => close connection */
+  if (p == NULL) {
+    /* remote host closed connection */
+    es->state = ES_CLOSING;
+    if (es->p_tx == NULL) {
+       /* we're done sending, close connection */
+       tcp_modbusclient_connection_close(tpcb, es);
+    } else {
+      /* send remaining data*/
+      tcp_modbusclient_send(tpcb, es);
+    }
+    ret_err = ERR_OK;
+  }
+  /* else : a non empty frame was received from echo server but for some reason err != ERR_OK */
+  else if (err != ERR_OK) {
+    /* free received pbuf*/
+    if (p != NULL) {
+      pbuf_free(p);
+    }
+    ret_err = err;
+  } else if(es->state == ES_CONNECTED) {
+    /* increment message count */
+	  /* Response to modbus query is expected here */
+	  //message_count++;
+    /* Acknowledge data reception */
+		  memcpy(strMbClient.s8SlaveResponseArray,p->payload,p->tot_len);
+		  enmMBCurrentState = enmMB_RESPONSERECEIVED;
+		  gu32MBConnected = 1;
+
+    tcp_recved(tpcb, p->tot_len);
+
+    pbuf_free(p);
+    tcp_modbusclient_connection_close(tpcb, es);
+    ret_err = ERR_OK;
+  }
+
+  /* data received when connection already closed */
+  else {
+    /* Acknowledge data reception */
+    tcp_recved(tpcb, p->tot_len);
+
+    /* free pbuf and do nothing */
+    pbuf_free(p);
+    ret_err = ERR_OK;
+  }
+  return ret_err;
+}
+
+/**
+  * @brief function used to send data
+  * @param  tpcb: tcp control block
+  * @param  es: pointer on structure of type echoclient containing info on data
+  *             to be sent
+  * @retval None
+  */
+static void tcp_modbusclient_send(struct tcp_pcb *tpcb, struct mbclient * es)
+{
+  struct pbuf *ptr;
+  err_t wr_err = ERR_OK;
+
+  while ((wr_err == ERR_OK) &&
+         (es->p_tx != NULL) &&
+         (es->p_tx->len <= tcp_sndbuf(tpcb)))
+  {
+
+    /* get pointer on pbuf from es structure */
+    ptr = es->p_tx;
+
+    /* enqueue data for transmission */
+    wr_err = tcp_write(tpcb, ptr->payload, ptr->len, 1);
+
+    if (wr_err == ERR_OK) {
+      /* continue with next pbuf in chain (if any) */
+      es->p_tx = ptr->next;
+
+      if (es->p_tx != NULL) {
+        /* increment reference count for es->p */
+        pbuf_ref(es->p_tx);
+      }
+
+      /* free pbuf: will free pbufs up to es->p (because es->p has a reference count > 0) */
+      pbuf_free(ptr);
+   } else if(wr_err == ERR_MEM) {
+      /* we are low on memory, try later, defer to poll */
+     es->p_tx = ptr;
+   } else {
+     /* other problem ?? */
+   }
+  }
+}
+
+/**
+  * @brief  This function implements the tcp_poll callback function
+  * @param  arg: pointer on argument passed to callback
+  * @param  tpcb: tcp connection control block
+  * @retval err_t: error code
+  */
+static err_t tcp_modbusclient_poll(void *arg, struct tcp_pcb *tpcb)
+{
+  err_t ret_err;
+  struct mbclient *es;
+
+  es = (struct mbclient*)arg;
+  if (es != NULL) {
+    if (es->p_tx != NULL) {
+      /* there is a remaining pbuf (chain) , try to send data */
+      tcp_modbusclient_send(tpcb, es);
+    } else {
+      /* no remaining pbuf (chain)  */
+      if (es->state == ES_CLOSING) {
+        /* close tcp connection */
+        tcp_modbusclient_connection_close(tpcb, es);
+      }
+    }
+    ret_err = ERR_OK;
+  } else {
+    /* nothing to be done */
+    tcp_abort(tpcb);
+    ret_err = ERR_ABRT;
+  }
+  return ret_err;
+}
+
+/**
+  * @brief  This function implements the tcp_sent LwIP callback (called when ACK
+  *         is received from remote host for sent data)
+  * @param  arg: pointer on argument passed to callback
+  * @param  tcp_pcb: tcp connection control block
+  * @param  len: length of data sent
+  * @retval err_t: returned error code
+  */
+static err_t tcp_modbusclient_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
+{
+  struct mbclient *es;
+
+  LWIP_UNUSED_ARG(len);
+
+  es = (struct mbclient *)arg;
+
+  if(es->p_tx != NULL)
+  {
+    /* still got pbufs to send */
+    tcp_modbusclient_send(tpcb, es);
+  }
+
+  return ERR_OK;
+}
+
+/**
+  * @brief This function is used to close the tcp connection with server
+  * @param tpcb: tcp connection control block
+  * @param es: pointer on echoclient structure
+  * @retval None
+  */
+static void tcp_modbusclient_connection_close(struct tcp_pcb *tpcb, struct mbclient * es )
+{
+  /* remove callbacks */
+  tcp_recv(tpcb, NULL);
+  tcp_sent(tpcb, NULL);
+  tcp_poll(tpcb, NULL,0);
+
+  if (es != NULL) {
+    mem_free(es);
+  }
+  /* close tcp connection */
+  tcp_close(tpcb);
+}
+
+static void tcp_modbusclient_error(void *arg, err_t err)
+{
+	/* Tested  Connection aborted = -13
+	 * Connection reset = -14 */
+	if(mbclient_pcb != NULL)
+		mem_free(mbclient_pcb);
+
+	tcp_close(mbclient_pcb);
+	tcp_modbusclient_connect();
+	gu32MBClientConnectedFlag = 0;
+}
+
+#endif
+
+//***************************************** End of File ********************************************************
